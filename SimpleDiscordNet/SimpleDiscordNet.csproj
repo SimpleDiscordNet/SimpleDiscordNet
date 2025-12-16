@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latestmajor</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  
+  <!-- Exclude legacy attributes from compilation (replaced by DiscordContextAttribute) -->
+  <ItemGroup>
+    <Compile Remove="Attributes\DiscordGuildsAttribute.cs" />
+    <Compile Remove="Attributes\DiscordChannelsAttribute.cs" />
+    <Compile Remove="Attributes\DiscordMembersAttribute.cs" />
+    <Compile Remove="Attributes\DiscordUsersAttribute.cs" />
+  </ItemGroup>
+
+</Project>
