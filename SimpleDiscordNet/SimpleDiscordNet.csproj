@@ -7,7 +7,7 @@
         <Nullable>enable</Nullable>
 
         <AssemblyName>SimpleDiscordDotNet</AssemblyName>
-        <Version>1.0.2</Version>
+        <Version>1.0.3</Version>
 
         <IsPackable>true</IsPackable>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -30,7 +30,9 @@
 
     <!-- Reference for build-time usage only -->
     <ItemGroup>
+        <!-- Use the generator during local builds as an analyzer -->
         <ProjectReference Include="..\SimpleDiscordNet.Generators\SimpleDiscordNet.Generators.csproj"
+                          OutputItemType="Analyzer"
                           ReferenceOutputAssembly="false"
                           PrivateAssets="all" />
     </ItemGroup>

@@ -28,26 +28,58 @@ Requirements
 
 Install / Add to your project
 -----------------------------
-SimpleDiscordNet is a source project (no external dependencies). You have two easy ways to use it.
+Recommended: install from NuGet.
 
-1) Add as a project reference
-- Clone or copy this repository somewhere alongside your app.
-- In your app solution, add the project and reference it:
+- NuGet package: https://www.nuget.org/packages/SimpleDiscordDotNet/
+- Target framework: net10.0 (C# 14)
 
+.NET CLI
 ```powershell
-# from your solution folder
+dotnet add <YourApp.csproj> package SimpleDiscordDotNet
+```
+
+Package Manager (Visual Studio)
+```powershell
+Install-Package SimpleDiscordDotNet
+```
+
+Project file (PackageReference)
+```xml
+<ItemGroup>
+  <PackageReference Include="SimpleDiscordDotNet" Version="x.y.z" />
+  <!-- Use the latest version from NuGet -->
+  <!-- https://www.nuget.org/packages/SimpleDiscordDotNet/ -->
+</ItemGroup>
+```
+
+Alternative (advanced): source reference
+- For contributors or if you need to modify the library locally, you can reference the projects directly.
+- Important: include BOTH projects from this repo — the runtime library and the source generator — otherwise generation will not run and features won’t work.
+
+Projects you must include:
+- Library: `SimpleDiscordNet\SimpleDiscordNet\SimpleDiscordNet.csproj`
+- Source generator: `SimpleDiscordNet\SimpleDiscordNet.Generators\SimpleDiscordNet.Generators.csproj`
+
+.NET CLI (from your solution folder)
+```powershell
+# Add both projects to your solution
 dotnet sln add .\SimpleDiscordNet\SimpleDiscordNet\SimpleDiscordNet.csproj
+dotnet sln add .\SimpleDiscordNet\SimpleDiscordNet.Generators\SimpleDiscordNet.Generators.csproj
 
+# Reference both projects from your app project
 dotnet add <YourApp.csproj> reference .\SimpleDiscordNet\SimpleDiscordNet\SimpleDiscordNet.csproj
+dotnet add <YourApp.csproj> reference .\SimpleDiscordNet\SimpleDiscordNet.Generators\SimpleDiscordNet.Generators.csproj
 ```
 
-2) (Optional) Pack as a local NuGet and install
-```powershell
-cd .\SimpleDiscordNet\SimpleDiscordNet
-dotnet pack -c Release
-# Find the produced nupkg under bin\Release and install it to your app project
-dotnet add <YourApp.csproj> package SimpleDiscordNet --source <path-to-your-local-packages>
-```
+Visual Studio (GUI)
+- Solution → Add → Existing Project…
+  - Add `SimpleDiscordNet/SimpleDiscordNet/SimpleDiscordNet.csproj`
+  - Add `SimpleDiscordNet/SimpleDiscordNet.Generators/SimpleDiscordNet.Generators.csproj`
+- Your app project → Add → Project Reference…
+  - Check both “SimpleDiscordNet” and “SimpleDiscordNet.Generators”
+- Build the solution to trigger source generation.
+
+Note: If you install via NuGet (recommended), the package already includes the generator — you do not need to add the Generators project manually.
 
 
 Quick start (Builder)
