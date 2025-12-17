@@ -1,42 +1,52 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+
     <PropertyGroup>
         <TargetFramework>net10.0</TargetFramework>
         <LangVersion>latestmajor</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+
         <AssemblyName>SimpleDiscordDotNet</AssemblyName>
-        <Version>1.0.1</Version>
+        <Version>1.0.2</Version>
+
+        <IsPackable>true</IsPackable>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+
+        <PackageLicenseFile>LICENSE</PackageLicenseFile>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
-  
-  <!-- Exclude legacy attributes from compilation (replaced by DiscordContextAttribute) -->
-  <ItemGroup>
-    <Compile Remove="Attributes\DiscordGuildsAttribute.cs" />
-    <Compile Remove="Attributes\DiscordChannelsAttribute.cs" />
-    <Compile Remove="Attributes\DiscordMembersAttribute.cs" />
-    <Compile Remove="Attributes\DiscordUsersAttribute.cs" />
-  </ItemGroup>
 
-  <!-- Generate a NuGet package when building in Release configuration -->
-  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <IsPackable>true</IsPackable>
-    <!-- Include license and readme metadata in the NuGet package -->
-    <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-  </PropertyGroup>
+    <ItemGroup>
+        <Compile Remove="Attributes\DiscordGuildsAttribute.cs" />
+        <Compile Remove="Attributes\DiscordChannelsAttribute.cs" />
+        <Compile Remove="Attributes\DiscordMembersAttribute.cs" />
+        <Compile Remove="Attributes\DiscordUsersAttribute.cs" />
+    </ItemGroup>
 
-  <!-- Ensure README and LICENSE from repo root are included at the package root -->
-  <ItemGroup>
-    <None Include="..\README.md" Pack="true" PackagePath="\" />
-    <None Include="..\LICENSE" Pack="true" PackagePath="\" />
-  </ItemGroup>
+    <ItemGroup>
+        <None Include="..\README.md" Pack="true" PackagePath="\" />
+        <None Include="..\LICENSE" Pack="true" PackagePath="\" />
+    </ItemGroup>
 
-  <!-- Bundle the Roslyn source generator into the NuGet under analyzers/dotnet/cs -->
-  <ItemGroup>
-    <ProjectReference Include="..\SimpleDiscordNet.Generators\SimpleDiscordNet.Generators.csproj"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false"
-                      PrivateAssets="all" />
-  </ItemGroup>
+    <!-- Reference for build-time usage only -->
+    <ItemGroup>
+        <ProjectReference Include="..\SimpleDiscordNet.Generators\SimpleDiscordNet.Generators.csproj"
+                          ReferenceOutputAssembly="false"
+                          PrivateAssets="all" />
+    </ItemGroup>
+
+    <!-- Explicitly pack the generator -->
+    <ItemGroup>
+        <None Include="..\SimpleDiscordNet.Generators\bin\$(Configuration)\netstandard2.0\SimpleDiscordNet.Generators.dll"
+              Pack="true"
+              PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
+
+    <!-- Ensure generator is built first -->
+    <Target Name="BuildGeneratorBeforePack" BeforeTargets="Pack">
+        <MSBuild Projects="..\SimpleDiscordNet.Generators\SimpleDiscordNet.Generators.csproj"
+                 Targets="Build"
+                 Properties="Configuration=$(Configuration)" />
+    </Target>
 
 </Project>
