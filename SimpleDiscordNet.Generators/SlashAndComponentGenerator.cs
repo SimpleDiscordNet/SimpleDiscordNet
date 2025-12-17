@@ -94,7 +94,25 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
             }
         }
 
-        bool hasContext = ms.Parameters.Length > 0 && ms.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "SimpleDiscordNet.Commands.InteractionContext";
+        // Detect whether the first parameter is our InteractionContext type. Be tolerant to Roslyn's
+        // fully-qualified formatting (global:: prefix) and nullable annotations.
+        bool hasContext = false;
+        if (ms.Parameters.Length > 0)
+        {
+            var p0 = ms.Parameters[0].Type;
+            var p0Display = p0.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                .TrimStart('g', 'l', 'o', 'b', 'a', 'l', ':')
+                .TrimEnd('?');
+            if (p0Display == "SimpleDiscordNet.Commands.InteractionContext")
+            {
+                hasContext = true;
+            }
+            else if (p0.Name == "InteractionContext")
+            {
+                // Fallback: rely on short name match to be resilient if formats differ
+                hasContext = true;
+            }
+        }
 
         // Only parameterless instance or any static methods are supported
         bool isStatic = ms.IsStatic;
