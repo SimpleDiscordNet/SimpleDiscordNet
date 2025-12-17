@@ -7,7 +7,7 @@ using SimpleDiscordNet.Events;
 
 namespace SimpleDiscordNet.Gateway;
 
-internal sealed class GatewayClient(string token, DiscordIntents intents, JsonSerializerOptions json, NativeLogger logger, TimeProvider time)
+internal sealed partial class GatewayClient(string token, DiscordIntents intents, JsonSerializerOptions json, NativeLogger logger, TimeProvider time)
     : IDisposable
 {
     private readonly NativeLogger _logger = logger;
@@ -81,219 +81,19 @@ internal sealed class GatewayClient(string token, DiscordIntents intents, JsonSe
         }
     }
 
-    private async Task ReceiveLoop(CancellationToken ct)
-    {
-        byte[] buffer = new byte[1 << 16];
-        System.Text.StringBuilder sb = new(4096);
-        ArraySegment<byte> seg = new(buffer);
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                if (_ws.State != WebSocketState.Open)
-                {
-                    if (!_autoReconnect) break;
-                    await SafeReconnectAsync(ct).ConfigureAwait(false);
-                    if (_ws.State != WebSocketState.Open) break;
-                }
-                sb.Clear();
-                WebSocketReceiveResult? result;
-                do
-                {
-                    result = await _ws.ReceiveAsync(seg, ct).ConfigureAwait(false);
-                    if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        // Attempt to reconnect, according to gateway policy
-                        if (!_autoReconnect)
-                        {
-                            await DisconnectAsync().ConfigureAwait(false);
-                            return;
-                        }
-                        await SafeReconnectAsync(ct).ConfigureAwait(false);
-                        // continue to next iteration with new socket
-                        goto ContinueLoop;
-                    }
-                    sb.Append(System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count));
-                } while (!result.EndOfMessage);
+    // moved to partial: ReceiveLoop
 
-                string json1 = sb.ToString();
-                GatewayPayload? payload = JsonSerializer.Deserialize<GatewayPayload>(json1, json);
-                if (payload == null) continue;
-                if (payload.s.HasValue) _seq = payload.s.Value;
+    // moved to partial: StartHeartbeat
 
-                switch (payload.op)
-                {
-                    case 10: // Hello
-                        int interval = payload.d.GetProperty("heartbeat_interval").GetInt32();
-                        _heartbeatIntervalMs = interval;
-                        StartHeartbeat();
-                        if (!string.IsNullOrEmpty(_sessionId) && _seq > 0)
-                        {
-                            await ResumeAsync().ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            await IdentifyAsync().ConfigureAwait(false);
-                        }
-                        break;
-                    case 11: // Heartbeat ACK
-                        _awaitingHeartbeatAck = false;
-                        _missedHeartbeatAcks = 0;
-                        break;
-                    case 0: // Dispatch
-                        HandleDispatch(payload.t, payload.d);
-                        break;
-                    case 7: // RECONNECT
-                        if (_autoReconnect)
-                        {
-                            await SafeReconnectAsync(ct).ConfigureAwait(false);
-                        }
-                        break;
-                    case 9: // INVALID_SESSION
-                        bool canResume = false;
-                        try { canResume = payload.d.ValueKind == JsonValueKind.True || (payload.d.ValueKind == JsonValueKind.False ? false : payload.d.GetBoolean()); }
-                        catch { }
-                        // Random jitter 1-5s as per Discord suggestion
-                        int delay = _rand.Next(1000, 5000);
-                        await Task.Delay(delay, ct).ConfigureAwait(false);
-                        if (canResume && !string.IsNullOrEmpty(_sessionId) && _seq > 0)
-                        {
-                            await ResumeAsync().ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            _sessionId = null; _seq = 0;
-                            await IdentifyAsync().ConfigureAwait(false);
-                        }
-                        break;
-                }
-            ContinueLoop: ;
-            }
-        }
-        catch (Exception ex)
-        {
-            Error?.Invoke(this, ex);
-            if (_autoReconnect && !ct.IsCancellationRequested)
-            {
-                try { await SafeReconnectAsync(ct).ConfigureAwait(false); } catch { }
-                // After reconnection, loop continues
-                if (!ct.IsCancellationRequested) await ReceiveLoop(ct).ConfigureAwait(false);
-            }
-        }
-    }
+    // moved to partial: IdentifyAsync
 
-    private void StartHeartbeat()
-    {
-        _heartbeatTimer?.Dispose();
-        _heartbeatTimer = new Timer(async _ =>
-        {
-            try
-            {
-                if (_ws.State == WebSocketState.Open)
-                {
-                    // detect missed ack from the previous heartbeat
-                    if (_awaitingHeartbeatAck)
-                    {
-                        _missedHeartbeatAcks++;
-                        if (_missedHeartbeatAcks >= 2 && _autoReconnect)
-                        {
-                            await SafeReconnectAsync(_internalCts.Token).ConfigureAwait(false);
-                            return;
-                        }
-                    }
-                    Heartbeat hb = new() { d = _seq };
-                    byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(hb, json));
-                    await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
-                    _awaitingHeartbeatAck = true;
-                }
-            }
-            catch (Exception ex)
-            {
-                Error?.Invoke(this, ex);
-            }
-        }, null, _heartbeatIntervalMs, _heartbeatIntervalMs);
-    }
+    // moved to partial: ResumeAsync
 
-    private async Task IdentifyAsync()
-    {
-        Identify identify = new()
-        {
-            d = new IdentifyPayload
-            {
-                token = token,
-                intents = (int)intents,
-                properties = new IdentifyConnectionProperties()
-            }
-        };
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(identify, json));
-        await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
-    }
+    // moved to partial: ConnectSocketAsync
 
-    private async Task ResumeAsync()
-    {
-        if (string.IsNullOrEmpty(_sessionId))
-        {
-            await IdentifyAsync().ConfigureAwait(false);
-            return;
-        }
-        Resume resume = new()
-        {
-            d = new ResumePayload
-            {
-                token = token,
-                session_id = _sessionId!,
-                seq = _seq
-            }
-        };
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(resume, json));
-        await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
-    }
+    // moved to partial: GetBackoffDelayMs
 
-    private async Task ConnectSocketAsync(CancellationToken ct)
-    {
-        _ws = new ClientWebSocket();
-        _ws.Options.SetRequestHeader("User-Agent", "SimpleDiscordNet (https://example, 1.0)");
-        await _ws.ConnectAsync(new Uri("wss://gateway.discord.gg/?v=10&encoding=json"), ct).ConfigureAwait(false);
-        _reconnectAttempt = 0;
-        _awaitingHeartbeatAck = false;
-        _missedHeartbeatAcks = 0;
-    }
-
-    private int GetBackoffDelayMs()
-    {
-        // Exponential backoff capped at 30s with jitter
-        int baseMs = (int)Math.Min(30000, 1000 * Math.Pow(2, Math.Min(8, _reconnectAttempt)));
-        int jitter = _rand.Next(0, 500);
-        return baseMs + jitter;
-    }
-
-    private async Task SafeReconnectAsync(CancellationToken ct)
-    {
-        if (Interlocked.Exchange(ref _reconnecting, 1) == 1) return;
-        try
-        {
-            try { _heartbeatTimer?.Dispose(); } catch { }
-            try
-            {
-                if (_ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived)
-                {
-                    await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "reconnect", CancellationToken.None).ConfigureAwait(false);
-                }
-            }
-            catch { }
-
-            // Backoff before reconnection
-            _reconnectAttempt++;
-            int delay = GetBackoffDelayMs();
-            await Task.Delay(delay, ct).ConfigureAwait(false);
-
-            await ConnectSocketAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _reconnecting, 0);
-        }
-    }
+    // moved to partial: SafeReconnectAsync
 
     private void HandleDispatch(string? eventName, JsonElement data)
     {
@@ -588,79 +388,15 @@ internal sealed class GatewayClient(string token, DiscordIntents intents, JsonSe
         }
     }
 
-    private void TryEmitChannelEvent(JsonElement data, EventHandler<Channel>? evt)
-    {
-        try
-        {
-            // Ignore if not a guild channel (e.g., DM has no guild_id)
-            if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
-            string id = data.GetProperty("id").GetString()!;
-            string name = data.TryGetProperty("name", out JsonElement n) ? (n.GetString() ?? string.Empty) : string.Empty;
-            int type = data.TryGetProperty("type", out JsonElement t) ? t.GetInt32() : 0;
-            string? parent = data.TryGetProperty("parent_id", out JsonElement p) && p.ValueKind != JsonValueKind.Null ? p.GetString() : null;
-            string? guildId = gidProp.GetString();
+    // moved to partial: TryEmitChannelEvent
 
-            Channel ch = new()
-            {
-                Id = id,
-                Name = name,
-                Type = type,
-                Parent_Id = parent,
-                Guild_Id = guildId
-            };
-            evt?.Invoke(this, ch);
-        }
-        catch (Exception ex) { Error?.Invoke(this, ex); }
-    }
+    // moved to partial: TryEmitMemberEvent
 
-    private void TryEmitMemberEvent(JsonElement data, EventHandler<GatewayMemberEvent>? evt)
-    {
-        try
-        {
-            if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
-            User user = ParseUser(data.GetProperty("user"));
-            string[] roles = data.TryGetProperty("roles", out JsonElement r) && r.ValueKind == JsonValueKind.Array
-                ? r.EnumerateArray().Select(x => x.GetString()!).Where(s => s is not null).ToArray() 
-                : [];
-            string? nick = data.TryGetProperty("nick", out JsonElement n) && n.ValueKind != JsonValueKind.Null ? n.GetString() : null;
+    // moved to partial: TryEmitMemberRemoveEvent
 
-            Member member = new Member { User = user, Nick = nick, Roles = roles };
-            evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetString()!, Member = member });
-        }
-        catch (Exception ex) { Error?.Invoke(this, ex); }
-    }
+    // moved to partial: TryEmitBanEvent
 
-    private void TryEmitMemberRemoveEvent(JsonElement data, EventHandler<GatewayMemberEvent>? evt)
-    {
-        try
-        {
-            if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
-            User user = ParseUser(data.GetProperty("user"));
-            Member member = new Member { User = user, Nick = null, Roles = Array.Empty<string>() };
-            evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetString()!, Member = member });
-        }
-        catch (Exception ex) { Error?.Invoke(this, ex); }
-    }
-
-    private void TryEmitBanEvent(JsonElement data, EventHandler<GatewayUserEvent>? evt)
-    {
-        try
-        {
-            string guildId = data.GetProperty("guild_id").GetString()!;
-            User user = ParseUser(data.GetProperty("user"));
-            evt?.Invoke(this, new GatewayUserEvent { GuildId = guildId, User = user });
-        }
-        catch (Exception ex) { Error?.Invoke(this, ex); }
-    }
-
-    private static User ParseUser(JsonElement obj)
-    {
-        return new User
-        {
-            Id = obj.GetProperty("id").GetString()!,
-            Username = obj.TryGetProperty("username", out JsonElement un) ? (un.GetString() ?? string.Empty) : string.Empty
-        };
-    }
+    // moved to partial: ParseUser
 
     public void Dispose()
     {

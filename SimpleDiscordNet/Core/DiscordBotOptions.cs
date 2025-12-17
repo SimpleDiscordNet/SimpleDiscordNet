@@ -14,11 +14,14 @@ public sealed record DiscordBotOptions
     /// <summary>Gateway intents. Defaults to Guilds | GuildMessages | DirectMessages | MessageContent.</summary>
     public DiscordIntents Intents { get; init; } = DiscordIntents.Guilds | DiscordIntents.GuildMessages | DiscordIntents.DirectMessages | DiscordIntents.MessageContent;
 
-    /// <summary>System.Text.Json options. Defaults to JsonSerializerDefaults.Web with case-insensitive props.</summary>
-    public JsonSerializerOptions JsonOptions { get; init; } = new(JsonSerializerDefaults.Web)
+    /// <summary>System.Text.Json options. Defaults to source-generated DiscordJsonContext with case-insensitive props.</summary>
+    public JsonSerializerOptions JsonOptions { get; init; } = new(SimpleDiscordNet.Serialization.DiscordJsonContext.Default.Options)
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        TypeInfoResolver = System.Text.Json.Serialization.Metadata.JsonTypeInfoResolver.Combine(
+            SimpleDiscordNet.Serialization.DiscordJsonContext.Default,
+            new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver())
     };
 
     /// <summary>Optional time provider for testing or customization.</summary>

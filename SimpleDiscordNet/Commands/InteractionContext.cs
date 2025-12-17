@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using SimpleDiscordNet.Models;
+using SimpleDiscordNet.Models.Requests;
 using SimpleDiscordNet.Primitives;
 using SimpleDiscordNet.Rest;
 
@@ -80,9 +81,9 @@ public sealed class InteractionContext
     {
         if (_deferred || _deferredUpdate)
         {
-            object payload = new
+            var payload = new WebhookMessageRequest
             {
-                content,
+                content = content,
                 embeds = embed is null ? null : new[] { embed.ToModel() },
                 flags = ephemeral ? 1 << 6 : (int?)null,
                 components = new object[] { new ActionRow(components.Cast<object>().ToArray()) }
@@ -126,9 +127,9 @@ public sealed class InteractionContext
     /// </summary>
     public Task FollowupAsync(string content, EmbedBuilder? embed = null, bool ephemeral = false, CancellationToken ct = default)
     {
-        object payload = new
+        var payload = new WebhookMessageRequest
         {
-            content,
+            content = content,
             embeds = embed is null ? null : new[] { embed.ToModel() },
             flags = ephemeral ? 1 << 6 : (int?)null
         };
@@ -157,15 +158,15 @@ public sealed class InteractionContext
     /// </summary>
     public Task UpdateMessageAsync(string content, IEnumerable<IComponent>? components = null, CancellationToken ct = default)
     {
-        object comps = components is null ? null : new object[] { new ActionRow(components.Cast<object>().ToArray()) };
+        object? comps = components is null ? null : new object[] { new ActionRow(components.Cast<object>().ToArray()) };
 
         if (_deferredUpdate)
         {
             // After a DEFERRED_UPDATE_MESSAGE, we must edit the original via webhook
-            object payload = new
+            var payload = new WebhookMessageRequest
             {
-                content,
-                components = comps
+                content = content,
+                components = (object[]?)comps
             };
             return _rest.PatchWebhookOriginalAsync(ApplicationId, InteractionToken, payload, ct);
         }
@@ -188,13 +189,13 @@ public sealed class InteractionContext
         {
             throw new InvalidOperationException("Cannot open a modal after the interaction has been deferred. Disable auto-defer for this handler or open the modal as the initial response.");
         }
-        object modal = new
+        var modal = new OpenModalRequest
         {
-            type = 9, // MODAL
-            data = new
+            type = 9,
+            data = new ModalData
             {
                 custom_id = customId,
-                title,
+                title = title,
                 components = actionRows
             }
         };
