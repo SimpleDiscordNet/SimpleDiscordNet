@@ -8,6 +8,7 @@ using SimpleDiscordNet.Entities;
 using SimpleDiscordNet.Gateway;
 using SimpleDiscordNet.Logging;
 using SimpleDiscordNet.Models;
+using SimpleDiscordNet.Models.Requests;
 using SimpleDiscordNet.Rest;
 using SimpleDiscordNet.Events;
 
@@ -37,6 +38,7 @@ public sealed class DiscordBot : IDiscordBot
     private readonly string[] _developmentGuildIds;
 
     private readonly ConcurrentDictionary<string, object> _services = new();
+    private readonly List<IGeneratedManifest> _generatedManifests = new();
 
     private volatile bool _started;
 
@@ -111,16 +113,7 @@ public sealed class DiscordBot : IDiscordBot
             _ = Task.Run(() => PreloadAsync(_cts.Token), cancellationToken);
         }
 
-        // Auto-register slash commands discovered via reflection before any potential sync
-        try
-        {
-            AutoRegisterSlashCommands();
-            AutoRegisterComponentHandlers();
-        }
-        catch (Exception ex)
-        {
-            _logger.Log(LogLevel.Error, $"Auto-registration of handlers failed: {ex.Message}", ex);
-        }
+        // Generated handlers (if any) are registered during Build() via GeneratedRegistry providers.
 
         // In development mode, immediately sync all current slash commands to configured guilds
         if (_developmentMode)
@@ -175,72 +168,7 @@ public sealed class DiscordBot : IDiscordBot
 
     // ---- Slash Commands ----
 
-    /// <summary>
-    /// Scans loaded assemblies for classes containing methods marked with <see cref="SlashCommandAttribute"/>
-    /// and automatically registers them. Classes must be non-abstract with a public parameterless constructor.
-    /// </summary>
-    private void AutoRegisterSlashCommands()
-    {
-        // Gather candidate types: non-abstract classes that contain at least one method with SlashCommandAttribute
-        Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-
-        int registeredTypes = 0;
-        foreach (Assembly assembly in assemblies)
-        {
-            Type[] types;
-            try
-            {
-                types = assembly.GetTypes();
-            }
-            catch (ReflectionTypeLoadException typeLoadEx)
-            {
-                types = typeLoadEx.Types.Where(t => t is not null).Cast<Type>().ToArray();
-            }
-            catch
-            {
-                continue; // skip assemblies we cannot inspect
-            }
-
-            foreach (Type type in types)
-            {
-                if (!type.IsClass || type.IsAbstract) continue;
-
-                // Quick check: any instance method has a SlashCommandAttribute
-                MethodInfo? anySlash = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    .FirstOrDefault(m => m.GetCustomAttribute<SlashCommandAttribute>() is not null);
-                if (anySlash is null) continue;
-
-                // Require public parameterless ctor
-                ConstructorInfo? publicParameterlessCtor = type.GetConstructor(Type.EmptyTypes);
-                if (publicParameterlessCtor is null || !publicParameterlessCtor.IsPublic)
-                {
-                    _logger.Log(LogLevel.Warning, $"Type '{type.FullName}' has slash commands but no public parameterless constructor. Skipping.");
-                    continue;
-                }
-
-                try
-                {
-                    object? instance = Activator.CreateInstance(type);
-                    if (instance is null)
-                    {
-                        _logger.Log(LogLevel.Warning, $"Failed to create instance of '{type.FullName}'. Skipping.");
-                        continue;
-                    }
-                    _slashCommands.Register(instance);
-                    registeredTypes++;
-                }
-                catch (Exception exception)
-                {
-                    _logger.Log(LogLevel.Warning, $"Error instantiating '{type.FullName}': {exception.Message}");
-                }
-            }
-        }
-
-        if (registeredTypes > 0)
-        {
-            _logger.Log(LogLevel.Information, $"Auto-registered slash command handlers from {registeredTypes} type(s).");
-        }
-    }
+    // Reflection-based auto registration removed for pure source-generator mode
 
     /// <summary>
     /// Synchronizes all registered slash commands to the specified guild ids.
@@ -250,7 +178,11 @@ public sealed class DiscordBot : IDiscordBot
         if (guildIds is null) throw new ArgumentNullException(nameof(guildIds));
         ApplicationInfo app = await _rest.GetApplicationAsync(ct).ConfigureAwait(false)
                   ?? throw new InvalidOperationException("Failed to fetch application info");
-        object[] defs = _slashCommands.BuildCommandDefinitions();
+        if (_generatedManifests.Count == 0)
+            throw new InvalidOperationException("No generated command manifests were found. Ensure the source generator is referenced in the application project.");
+
+        var typed = _generatedManifests.SelectMany(m => m.Definitions).ToArray();
+        object[] defs = typed.Cast<object>().ToArray();
         foreach (string gid in guildIds)
         {
             await _rest.PutGuildCommandsAsync(app.Id, gid, defs, ct).ConfigureAwait(false);
@@ -264,9 +196,9 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public Task SendMessageAsync(string channelId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
     {
-        object payload = new
+        var payload = new CreateMessageRequest
         {
-            content,
+            content = content,
             embeds = embed is null ? null : new[] { embed.ToModel() }
         };
         return _rest.PostAsync($"/channels/{channelId}/messages", payload, ct);
@@ -277,11 +209,11 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public Task SendAttachmentAsync(string channelId, string content, string fileName, ReadOnlyMemory<byte> data, EmbedBuilder? embed = null, CancellationToken ct = default)
     {
-        object payload = new
+        var payload = new CreateMessageRequest
         {
-            content,
+            content = content,
             embeds = embed is null ? null : new[] { embed.ToModel() },
-            attachments = new[] { new { id = 0, filename = fileName } }
+            attachments = new object[] { new { id = 0, filename = fileName } }
         };
         return _rest.PostMultipartAsync($"/channels/{channelId}/messages", payload, (fileName, data), ct);
     }
@@ -441,68 +373,7 @@ public sealed class DiscordBot : IDiscordBot
         _gateway.UserUpdate += (_, u) => DiscordEvents.RaiseBotUserUpdated(this, new BotUserEvent { User = u });
     }
 
-    /// <summary>
-    /// Scans loaded assemblies for classes containing methods marked with <see cref="ComponentHandlerAttribute"/>
-    /// and automatically registers them. Classes must be non-abstract with a public parameterless constructor.
-    /// </summary>
-    private void AutoRegisterComponentHandlers()
-    {
-        Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-        int registeredTypes = 0;
-        foreach (Assembly assembly in assemblies)
-        {
-            Type[] types;
-            try
-            {
-                types = assembly.GetTypes();
-            }
-            catch (ReflectionTypeLoadException typeLoadEx)
-            {
-                types = typeLoadEx.Types.Where(t => t is not null).Cast<Type>().ToArray();
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (Type type in types)
-            {
-                if (!type.IsClass || type.IsAbstract) continue;
-
-                MethodInfo? any = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    .FirstOrDefault(m => m.GetCustomAttribute<ComponentHandlerAttribute>() is not null);
-                if (any is null) continue;
-
-                ConstructorInfo? ctor = type.GetConstructor(Type.EmptyTypes);
-                if (ctor is null || !ctor.IsPublic)
-                {
-                    _logger.Log(LogLevel.Warning, $"Type '{type.FullName}' has component handlers but no public parameterless constructor. Skipping.");
-                    continue;
-                }
-
-                try
-                {
-                    object? instance = Activator.CreateInstance(type);
-                    if (instance is null)
-                    {
-                        _logger.Log(LogLevel.Warning, $"Failed to create instance of '{type.FullName}'. Skipping.");
-                        continue;
-                    }
-                    _components.Register(instance);
-                    registeredTypes++;
-                }
-                catch (Exception exception)
-                {
-                    _logger.Log(LogLevel.Warning, $"Error instantiating '{type.FullName}': {exception.Message}");
-                }
-            }
-        }
-
-        if (registeredTypes > 0)
-        {
-            _logger.Log(LogLevel.Information, $"Auto-registered component handlers from {registeredTypes} type(s).");
-        }
-    }
+    // Reflection-based auto registration removed for pure source-generator mode
 
     /// <summary>
     /// Disposes managed resources asynchronously.
@@ -558,10 +429,15 @@ public sealed class DiscordBot : IDiscordBot
     {
         private string? _token;
         private DiscordIntents _intents = DiscordIntents.Guilds | DiscordIntents.GuildMessages | DiscordIntents.DirectMessages | DiscordIntents.MessageContent;
-        private JsonSerializerOptions _json = new(JsonSerializerDefaults.Web)
+        private JsonSerializerOptions _json = new(Serialization.DiscordJsonContext.Default.Options)
         {
+            // Preserve prior behavior on top of source-generated options
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            // Ensure fallback to runtime for types not covered by the context (e.g., gateway payload helpers)
+            TypeInfoResolver = System.Text.Json.Serialization.Metadata.JsonTypeInfoResolver.Combine(
+                Serialization.DiscordJsonContext.Default,
+                new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver())
         };
         private NativeLogger _logger = new();
         private TimeProvider? _timeProvider;
@@ -665,10 +541,39 @@ public sealed class DiscordBot : IDiscordBot
         /// </summary>
         public DiscordBot Build()
         {
-            return string.IsNullOrWhiteSpace(_token) 
-                ? throw new InvalidOperationException("Token is required") 
-                : new DiscordBot(_token!, _intents, _json, _logger, _timeProvider, _preloadGuilds, _preloadChannels, _preloadMembers, _developmentMode, _developmentGuildIds);
+            if (string.IsNullOrWhiteSpace(_token))
+                throw new InvalidOperationException("Token is required");
+
+            DiscordBot bot = new(_token!, _intents, _json, _logger, _timeProvider, _preloadGuilds, _preloadChannels, _preloadMembers, _developmentMode, _developmentGuildIds);
+
+            // Auto-register any manifests provided by source-generated initializers
+            foreach (IGeneratedManifestProvider provider in GeneratedRegistry.Providers)
+            {
+                try
+                {
+                    IGeneratedManifest manifest = provider.CreateManifest();
+                    bot.RegisterGeneratedHandlers(manifest);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log(LogLevel.Warning, $"Failed to register generated manifest: {ex.Message}");
+                }
+            }
+
+            return bot;
         }
+    }
+
+    /// <summary>
+    /// Registers generated handlers and definitions emitted by the source generator.
+    /// </summary>
+    public void RegisterGeneratedHandlers(IGeneratedManifest manifest)
+    {
+        if (manifest is null) throw new ArgumentNullException(nameof(manifest));
+        _generatedManifests.Add(manifest);
+        _slashCommands.RegisterGeneratedManifest(manifest);
+        foreach (var ch in manifest.Components)
+            _components.RegisterGenerated(ch);
     }
 
     private async Task PreloadAsync(CancellationToken ct)
