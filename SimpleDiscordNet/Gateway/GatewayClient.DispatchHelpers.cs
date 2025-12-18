@@ -71,6 +71,165 @@ internal sealed partial class GatewayClient
         catch (Exception ex) { Error?.Invoke(this, ex); }
     }
 
+    private void TryEmitRoleEvent(JsonElement data, EventHandler<Role>? evt)
+    {
+        try
+        {
+            if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
+            JsonElement roleData = data.GetProperty("role");
+
+            Role role = new()
+            {
+                Id = roleData.GetProperty("id").GetString()!,
+                Name = roleData.GetProperty("name").GetString() ?? string.Empty,
+                Color = roleData.TryGetProperty("color", out JsonElement c) ? c.GetInt32() : 0,
+                Position = roleData.TryGetProperty("position", out JsonElement p) ? p.GetInt32() : 0,
+                Permissions = roleData.TryGetProperty("permissions", out JsonElement perms) ? perms.GetString() : null
+            };
+            evt?.Invoke(this, role);
+        }
+        catch (Exception ex) { Error?.Invoke(this, ex); }
+    }
+
+    private void TryEmitRoleDeleteEvent(JsonElement data, EventHandler<Role>? evt)
+    {
+        try
+        {
+            if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
+            string roleId = data.GetProperty("role_id").GetString()!;
+
+            Role role = new()
+            {
+                Id = roleId,
+                Name = string.Empty
+            };
+            evt?.Invoke(this, role);
+        }
+        catch (Exception ex) { Error?.Invoke(this, ex); }
+    }
+
+    private void TryEmitMessageUpdateEvent(JsonElement data, EventHandler<MessageUpdateEvent>? evt)
+    {
+        try
+        {
+            string messageId = data.GetProperty("id").GetString()!;
+            string channelId = data.GetProperty("channel_id").GetString()!;
+            string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+            string? content = data.TryGetProperty("content", out JsonElement c) ? c.GetString() : null;
+            string? editedTimestamp = data.TryGetProperty("edited_timestamp", out JsonElement et) ? et.GetString() : null;
+
+            MessageUpdateEvent e = new()
+            {
+                MessageId = messageId,
+                ChannelId = channelId,
+                GuildId = guildId,
+                Content = content,
+                EditedTimestamp = editedTimestamp
+            };
+            evt?.Invoke(this, e);
+        }
+        catch (Exception ex) { Error?.Invoke(this, ex); }
+    }
+
+    private void TryEmitMessageDeleteEvent(JsonElement data, EventHandler<MessageEvent>? evt)
+    {
+        try
+        {
+            string messageId = data.GetProperty("id").GetString()!;
+            string channelId = data.GetProperty("channel_id").GetString()!;
+            string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+
+            MessageEvent e = new()
+            {
+                MessageId = messageId,
+                ChannelId = channelId,
+                GuildId = guildId
+            };
+            evt?.Invoke(this, e);
+        }
+        catch (Exception ex) { Error?.Invoke(this, ex); }
+    }
+
+    private void TryEmitMessageDeleteBulkEvent(JsonElement data, EventHandler<MessageEvent>? evt)
+    {
+        try
+        {
+            // For bulk delete, we emit one event per message
+            if (data.TryGetProperty("ids", out JsonElement ids) && ids.ValueKind == JsonValueKind.Array)
+            {
+                string channelId = data.GetProperty("channel_id").GetString()!;
+                string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+
+                foreach (JsonElement id in ids.EnumerateArray())
+                {
+                    MessageEvent e = new()
+                    {
+                        MessageId = id.GetString()!,
+                        ChannelId = channelId,
+                        GuildId = guildId
+                    };
+                    evt?.Invoke(this, e);
+                }
+            }
+        }
+        catch (Exception ex) { Error?.Invoke(this, ex); }
+    }
+
+    private void TryEmitReactionEvent(JsonElement data, EventHandler<ReactionEvent>? evt)
+    {
+        try
+        {
+            string userId = data.GetProperty("user_id").GetString()!;
+            string channelId = data.GetProperty("channel_id").GetString()!;
+            string messageId = data.GetProperty("message_id").GetString()!;
+            string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+
+            JsonElement emojiData = data.GetProperty("emoji");
+            string? emojiId = emojiData.TryGetProperty("id", out JsonElement eid) ? eid.GetString() : null;
+            string? emojiName = emojiData.TryGetProperty("name", out JsonElement en) ? en.GetString() : null;
+
+            Emoji emoji = new() { Id = emojiId, Name = emojiName };
+
+            ReactionEvent e = new()
+            {
+                UserId = userId,
+                ChannelId = channelId,
+                MessageId = messageId,
+                GuildId = guildId,
+                Emoji = emoji
+            };
+            evt?.Invoke(this, e);
+        }
+        catch (Exception ex) { Error?.Invoke(this, ex); }
+    }
+
+    private void TryEmitReactionRemoveEmojiEvent(JsonElement data, EventHandler<ReactionEvent>? evt)
+    {
+        try
+        {
+            string channelId = data.GetProperty("channel_id").GetString()!;
+            string messageId = data.GetProperty("message_id").GetString()!;
+            string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+
+            JsonElement emojiData = data.GetProperty("emoji");
+            string? emojiId = emojiData.TryGetProperty("id", out JsonElement eid) ? eid.GetString() : null;
+            string? emojiName = emojiData.TryGetProperty("name", out JsonElement en) ? en.GetString() : null;
+
+            Emoji emoji = new() { Id = emojiId, Name = emojiName };
+
+            ReactionEvent e = new()
+            {
+                UserId = string.Empty, // No specific user for this event
+                ChannelId = channelId,
+                MessageId = messageId,
+                GuildId = guildId,
+                Emoji = emoji
+            };
+            evt?.Invoke(this, e);
+        }
+        catch (Exception ex) { Error?.Invoke(this, ex); }
+    }
+
     private static User ParseUser(JsonElement obj)
     {
         return new User

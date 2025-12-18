@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using SimpleDiscordNet.Context;
@@ -38,7 +38,7 @@ public sealed class DiscordBot : IDiscordBot
     private readonly string[] _developmentGuildIds;
 
     private readonly ConcurrentDictionary<string, object> _services = new();
-    private readonly List<IGeneratedManifest> _generatedManifests = new();
+    private readonly List<IGeneratedManifest> _generatedManifests = [];
 
     private volatile bool _started;
 
@@ -105,7 +105,7 @@ public sealed class DiscordBot : IDiscordBot
         }
 
         // Register ambient provider so consumers can access cached data.
-        DiscordContext.SetProvider(_cache.SnapshotGuilds, _cache.SnapshotChannels, _cache.SnapshotMembers, _cache.SnapshotUsers);
+        DiscordContext.SetProvider(_cache.SnapshotGuilds, _cache.SnapshotChannels, _cache.SnapshotMembers, _cache.SnapshotUsers, _cache.SnapshotRoles);
 
         // Optionally preload caches using REST (runs in background)
         if (_preloadGuilds || _preloadChannels || _preloadMembers)
@@ -246,6 +246,369 @@ public sealed class DiscordBot : IDiscordBot
         return _rest.GetAsync<Member[]>(route, ct);
     }
 
+    /// <summary>
+    /// Sets or updates a channel permission overwrite for a role or member.
+    /// </summary>
+    /// <param name="channelId">Channel ID</param>
+    /// <param name="targetId">Role ID or User ID</param>
+    /// <param name="type">0 = role, 1 = member</param>
+    /// <param name="allow">Permission bits to allow (as ulong)</param>
+    /// <param name="deny">Permission bits to deny (as ulong)</param>
+    /// <param name="ct">Cancellation token</param>
+    public Task SetChannelPermissionAsync(string channelId, string targetId, int type, ulong allow, ulong deny, CancellationToken ct = default)
+    {
+        var payload = new { type, allow = allow.ToString(), deny = deny.ToString() };
+        return _rest.PutChannelPermissionAsync(channelId, targetId, payload, ct);
+    }
+
+    /// <summary>
+    /// Deletes a channel permission overwrite.
+    /// </summary>
+    public Task DeleteChannelPermissionAsync(string channelId, string overwriteId, CancellationToken ct = default)
+        => _rest.DeleteChannelPermissionAsync(channelId, overwriteId, ct);
+
+    /// <summary>
+    /// Creates a new role in a guild.
+    /// </summary>
+    /// <param name="guildId">Guild ID</param>
+    /// <param name="name">Role name</param>
+    /// <param name="permissions">Permission bits (as ulong)</param>
+    /// <param name="color">Role color (RGB integer)</param>
+    /// <param name="hoist">Whether to display role separately in sidebar</param>
+    /// <param name="mentionable">Whether role is mentionable</param>
+    /// <param name="ct">Cancellation token</param>
+    public Task<Role?> CreateRoleAsync(string guildId, string? name = null, ulong? permissions = null, int? color = null, bool? hoist = null, bool? mentionable = null, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            name,
+            permissions = permissions?.ToString(),
+            color,
+            hoist,
+            mentionable
+        };
+        return _rest.PostGuildRoleAsync<Role>(guildId, payload, ct);
+    }
+
+    /// <summary>
+    /// Modifies a role in a guild.
+    /// </summary>
+    public Task<Role?> ModifyRoleAsync(string guildId, string roleId, string? name = null, ulong? permissions = null, int? color = null, bool? hoist = null, bool? mentionable = null, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            name,
+            permissions = permissions?.ToString(),
+            color,
+            hoist,
+            mentionable
+        };
+        return _rest.PatchGuildRoleAsync<Role>(guildId, roleId, payload, ct);
+    }
+
+    /// <summary>
+    /// Deletes a role from a guild.
+    /// </summary>
+    public Task DeleteRoleAsync(string guildId, string roleId, CancellationToken ct = default)
+        => _rest.DeleteGuildRoleAsync(guildId, roleId, ct);
+
+    /// <summary>
+    /// Creates a new channel in a guild.
+    /// </summary>
+    /// <param name="guildId">Guild ID</param>
+    /// <param name="name">Channel name</param>
+    /// <param name="type">Channel type (0=text, 2=voice, 4=category, etc.)</param>
+    /// <param name="parentId">Parent category ID (optional)</param>
+    /// <param name="permissionOverwrites">Permission overwrites (optional)</param>
+    /// <param name="ct">Cancellation token</param>
+    public Task<Channel?> CreateChannelAsync(string guildId, string name, int type, string? parentId = null, object[]? permissionOverwrites = null, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            name,
+            type,
+            parent_id = parentId,
+            permission_overwrites = permissionOverwrites
+        };
+        return _rest.PostGuildChannelAsync<Channel>(guildId, payload, ct);
+    }
+
+    /// <summary>
+    /// Creates a new text channel in a guild.
+    /// </summary>
+    public Task<Channel?> CreateTextChannelAsync(string guildId, string name, string? parentId = null, CancellationToken ct = default)
+        => CreateChannelAsync(guildId, name, Channel.ChannelType.GuildText, parentId, ct: ct);
+
+    /// <summary>
+    /// Creates a new voice channel in a guild.
+    /// </summary>
+    public Task<Channel?> CreateVoiceChannelAsync(string guildId, string name, string? parentId = null, CancellationToken ct = default)
+        => CreateChannelAsync(guildId, name, Channel.ChannelType.GuildVoice, parentId, ct: ct);
+
+    /// <summary>
+    /// Creates a new category channel in a guild.
+    /// </summary>
+    public Task<Channel?> CreateCategoryAsync(string guildId, string name, CancellationToken ct = default)
+        => CreateChannelAsync(guildId, name, Channel.ChannelType.GuildCategory, ct: ct);
+
+    /// <summary>
+    /// Modifies a channel.
+    /// </summary>
+    public Task<Channel?> ModifyChannelAsync(string channelId, string? name = null, int? type = null, string? parentId = null, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            name,
+            type,
+            parent_id = parentId
+        };
+        return _rest.PatchChannelAsync<Channel>(channelId, payload, ct);
+    }
+
+    /// <summary>
+    /// Deletes a channel.
+    /// </summary>
+    public Task DeleteChannelAsync(string channelId, CancellationToken ct = default)
+        => _rest.DeleteChannelAsync(channelId, ct);
+
+    // ---- Message management ----
+
+    /// <summary>
+    /// Gets a specific message from a channel.
+    /// Example: var message = await bot.GetMessageAsync(channelId, messageId);
+    /// </summary>
+    public Task<Message?> GetMessageAsync(string channelId, string messageId, CancellationToken ct = default)
+        => _rest.GetChannelMessageAsync<Message>(channelId, messageId, ct);
+
+    /// <summary>
+    /// Gets recent messages from a channel (up to 100).
+    /// Example: var messages = await bot.GetMessagesAsync(channelId, limit: 50);
+    /// </summary>
+    /// <param name="channelId">Channel ID</param>
+    /// <param name="limit">Number of messages to retrieve (1-100, default 50)</param>
+    /// <param name="before">Get messages before this message ID</param>
+    /// <param name="after">Get messages after this message ID</param>
+    public Task<Message[]?> GetMessagesAsync(string channelId, int limit = 50, string? before = null, string? after = null, CancellationToken ct = default)
+    {
+        if (limit < 1 || limit > 100) throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100");
+        return _rest.GetChannelMessagesAsync<Message[]>(channelId, limit, before, after, ct);
+    }
+
+    /// <summary>
+    /// Edits a message. Only works on messages sent by the bot.
+    /// Example: await bot.EditMessageAsync(channelId, messageId, "Updated content");
+    /// </summary>
+    public Task<Message?> EditMessageAsync(string channelId, string messageId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+    {
+        var payload = new
+        {
+            content,
+            embeds = embed is null ? null : new[] { embed.ToModel() }
+        };
+        return _rest.PatchMessageAsync<Message>(channelId, messageId, payload, ct);
+    }
+
+    /// <summary>
+    /// Deletes a message. Requires appropriate permissions.
+    /// Example: await bot.DeleteMessageAsync(channelId, messageId);
+    /// </summary>
+    public Task DeleteMessageAsync(string channelId, string messageId, CancellationToken ct = default)
+        => _rest.DeleteMessageAsync(channelId, messageId, ct);
+
+    /// <summary>
+    /// Bulk deletes multiple messages (2-100 messages, must be less than 14 days old).
+    /// Example: await bot.BulkDeleteMessagesAsync(channelId, new[] { msgId1, msgId2, msgId3 });
+    /// </summary>
+    public Task BulkDeleteMessagesAsync(string channelId, string[] messageIds, CancellationToken ct = default)
+    {
+        if (messageIds.Length < 2 || messageIds.Length > 100)
+            throw new ArgumentException("Must provide between 2 and 100 message IDs", nameof(messageIds));
+        return _rest.BulkDeleteMessagesAsync(channelId, messageIds, ct);
+    }
+
+    // ---- Reaction management ----
+
+    /// <summary>
+    /// Adds a reaction to a message.
+    /// Example (Unicode emoji): await bot.AddReactionAsync(channelId, messageId, "👍");
+    /// Example (custom emoji): await bot.AddReactionAsync(channelId, messageId, "custom_emoji:123456789");
+    /// </summary>
+    /// <param name="channelId">Channel ID</param>
+    /// <param name="messageId">Message ID</param>
+    /// <param name="emoji">Unicode emoji or custom emoji in format "name:id"</param>
+    public Task AddReactionAsync(string channelId, string messageId, string emoji, CancellationToken ct = default)
+    {
+        string encoded = System.Web.HttpUtility.UrlEncode(emoji);
+        return _rest.AddReactionAsync(channelId, messageId, encoded, ct);
+    }
+
+    /// <summary>
+    /// Adds a reaction to a message using an Emoji object.
+    /// Example: await bot.AddReactionAsync(channelId, messageId, Emoji.Unicode("👍"));
+    /// Example: await bot.AddReactionAsync(channelId, messageId, Emoji.Custom("custom", "123456789"));
+    /// </summary>
+    public Task AddReactionAsync(string channelId, string messageId, Emoji emoji, CancellationToken ct = default)
+    {
+        string encoded = System.Web.HttpUtility.UrlEncode(emoji.GetReactionFormat());
+        return _rest.AddReactionAsync(channelId, messageId, encoded, ct);
+    }
+
+    /// <summary>
+    /// Removes the bot's own reaction from a message.
+    /// Example: await bot.RemoveOwnReactionAsync(channelId, messageId, "👍");
+    /// </summary>
+    public Task RemoveOwnReactionAsync(string channelId, string messageId, string emoji, CancellationToken ct = default)
+    {
+        string encoded = System.Web.HttpUtility.UrlEncode(emoji);
+        return _rest.RemoveOwnReactionAsync(channelId, messageId, encoded, ct);
+    }
+
+    /// <summary>
+    /// Removes a user's reaction from a message. Requires MANAGE_MESSAGES permission.
+    /// Example: await bot.RemoveUserReactionAsync(channelId, messageId, "👍", userId);
+    /// </summary>
+    public Task RemoveUserReactionAsync(string channelId, string messageId, string emoji, string userId, CancellationToken ct = default)
+    {
+        string encoded = System.Web.HttpUtility.UrlEncode(emoji);
+        return _rest.RemoveUserReactionAsync(channelId, messageId, encoded, userId, ct);
+    }
+
+    /// <summary>
+    /// Gets users who reacted with a specific emoji (up to 100).
+    /// Example: var users = await bot.GetReactionsAsync(channelId, messageId, "👍");
+    /// </summary>
+    public Task<User[]?> GetReactionsAsync(string channelId, string messageId, string emoji, int limit = 25, CancellationToken ct = default)
+    {
+        if (limit < 1 || limit > 100) throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100");
+        string encoded = System.Web.HttpUtility.UrlEncode(emoji);
+        return _rest.GetReactionsAsync<User[]>(channelId, messageId, encoded, limit, ct);
+    }
+
+    /// <summary>
+    /// Removes all reactions from a message. Requires MANAGE_MESSAGES permission.
+    /// Example: await bot.RemoveAllReactionsAsync(channelId, messageId);
+    /// </summary>
+    public Task RemoveAllReactionsAsync(string channelId, string messageId, CancellationToken ct = default)
+        => _rest.RemoveAllReactionsAsync(channelId, messageId, ct);
+
+    /// <summary>
+    /// Removes all reactions for a specific emoji from a message. Requires MANAGE_MESSAGES permission.
+    /// Example: await bot.RemoveAllReactionsForEmojiAsync(channelId, messageId, "👍");
+    /// </summary>
+    public Task RemoveAllReactionsForEmojiAsync(string channelId, string messageId, string emoji, CancellationToken ct = default)
+    {
+        string encoded = System.Web.HttpUtility.UrlEncode(emoji);
+        return _rest.RemoveAllReactionsForEmojiAsync(channelId, messageId, encoded, ct);
+    }
+
+    // ---- Pin management ----
+
+    /// <summary>
+    /// Pins a message in a channel. Requires MANAGE_MESSAGES permission. Max 50 pins per channel.
+    /// Example: await bot.PinMessageAsync(channelId, messageId);
+    /// </summary>
+    public Task PinMessageAsync(string channelId, string messageId, CancellationToken ct = default)
+        => _rest.PinMessageAsync(channelId, messageId, ct);
+
+    /// <summary>
+    /// Unpins a message in a channel. Requires MANAGE_MESSAGES permission.
+    /// Example: await bot.UnpinMessageAsync(channelId, messageId);
+    /// </summary>
+    public Task UnpinMessageAsync(string channelId, string messageId, CancellationToken ct = default)
+        => _rest.UnpinMessageAsync(channelId, messageId, ct);
+
+    /// <summary>
+    /// Gets all pinned messages in a channel (up to 50).
+    /// Example: var pinnedMessages = await bot.GetPinnedMessagesAsync(channelId);
+    /// </summary>
+    public Task<Message[]?> GetPinnedMessagesAsync(string channelId, CancellationToken ct = default)
+        => _rest.GetPinnedMessagesAsync<Message[]>(channelId, ct);
+
+    // ---- Member moderation ----
+
+    /// <summary>
+    /// Kicks a member from the guild. Requires KICK_MEMBERS permission.
+    /// Example: await bot.KickMemberAsync(guildId, userId);
+    /// </summary>
+    public Task KickMemberAsync(string guildId, string userId, CancellationToken ct = default)
+        => _rest.KickMemberAsync(guildId, userId, ct);
+
+    /// <summary>
+    /// Bans a member from the guild. Requires BAN_MEMBERS permission.
+    /// Example: await bot.BanMemberAsync(guildId, userId, deleteMessageDays: 7);
+    /// </summary>
+    /// <param name="guildId">Guild ID</param>
+    /// <param name="userId">User ID to ban</param>
+    /// <param name="deleteMessageDays">Number of days of messages to delete (0-7, optional)</param>
+    public Task BanMemberAsync(string guildId, string userId, int? deleteMessageDays = null, CancellationToken ct = default)
+    {
+        if (deleteMessageDays.HasValue && (deleteMessageDays.Value < 0 || deleteMessageDays.Value > 7))
+            throw new ArgumentOutOfRangeException(nameof(deleteMessageDays), "Must be between 0 and 7 days");
+        return _rest.BanMemberAsync(guildId, userId, deleteMessageDays, ct);
+    }
+
+    /// <summary>
+    /// Unbans a user from the guild. Requires BAN_MEMBERS permission.
+    /// Example: await bot.UnbanMemberAsync(guildId, userId);
+    /// </summary>
+    public Task UnbanMemberAsync(string guildId, string userId, CancellationToken ct = default)
+        => _rest.UnbanMemberAsync(guildId, userId, ct);
+
+    // ---- Role assignment ----
+
+    /// <summary>
+    /// Adds a role to a guild member. Requires MANAGE_ROLES permission.
+    /// Example: await bot.AddRoleToMemberAsync(guildId, userId, roleId);
+    /// </summary>
+    public Task AddRoleToMemberAsync(string guildId, string userId, string roleId, CancellationToken ct = default)
+        => _rest.AddMemberRoleAsync(guildId, userId, roleId, ct);
+
+    /// <summary>
+    /// Removes a role from a guild member. Requires MANAGE_ROLES permission.
+    /// Example: await bot.RemoveRoleFromMemberAsync(guildId, userId, roleId);
+    /// </summary>
+    public Task RemoveRoleFromMemberAsync(string guildId, string userId, string roleId, CancellationToken ct = default)
+        => _rest.RemoveMemberRoleAsync(guildId, userId, roleId, ct);
+
+    // ---- Typing indicator ----
+
+    /// <summary>
+    /// Triggers the typing indicator in a channel. Lasts 10 seconds or until a message is sent.
+    /// Example: await bot.TriggerTypingAsync(channelId);
+    /// </summary>
+    public Task TriggerTypingAsync(string channelId, CancellationToken ct = default)
+        => _rest.TriggerTypingIndicatorAsync(channelId, ct);
+
+    // ---- Thread operations ----
+
+    /// <summary>
+    /// Joins a thread channel.
+    /// Example: await bot.JoinThreadAsync(threadId);
+    /// </summary>
+    public Task JoinThreadAsync(string threadId, CancellationToken ct = default)
+        => _rest.JoinThreadAsync(threadId, ct);
+
+    /// <summary>
+    /// Leaves a thread channel.
+    /// Example: await bot.LeaveThreadAsync(threadId);
+    /// </summary>
+    public Task LeaveThreadAsync(string threadId, CancellationToken ct = default)
+        => _rest.LeaveThreadAsync(threadId, ct);
+
+    /// <summary>
+    /// Adds a member to a thread. Requires MANAGE_THREADS permission.
+    /// Example: await bot.AddThreadMemberAsync(threadId, userId);
+    /// </summary>
+    public Task AddThreadMemberAsync(string threadId, string userId, CancellationToken ct = default)
+        => _rest.AddThreadMemberAsync(threadId, userId, ct);
+
+    /// <summary>
+    /// Removes a member from a thread. Requires MANAGE_THREADS permission.
+    /// Example: await bot.RemoveThreadMemberAsync(threadId, userId);
+    /// </summary>
+    public Task RemoveThreadMemberAsync(string threadId, string userId, CancellationToken ct = default)
+        => _rest.RemoveThreadMemberAsync(threadId, userId, ct);
+
     private void OnInteractionCreate(object? sender, InteractionCreateEvent e)
     {
         if (e.Type == InteractionType.ApplicationCommand && e.Data is not null)
@@ -336,6 +699,46 @@ public sealed class DiscordBot : IDiscordBot
             DiscordEvents.RaiseChannelDeleted(this, new ChannelEvent { Channel = ch, Guild = guild });
         };
 
+        // Role events
+        _gateway.GuildRoleCreate += (_, role) =>
+        {
+            Guild guild = new Guild { Id = string.Empty, Name = string.Empty };
+            DiscordEvents.RaiseRoleCreated(this, new RoleEvent { Role = role, Guild = guild });
+        };
+        _gateway.GuildRoleUpdate += (_, role) =>
+        {
+            Guild guild = new Guild { Id = string.Empty, Name = string.Empty };
+            DiscordEvents.RaiseRoleUpdated(this, new RoleEvent { Role = role, Guild = guild });
+        };
+        _gateway.GuildRoleDelete += (_, role) =>
+        {
+            Guild guild = new Guild { Id = string.Empty, Name = string.Empty };
+            DiscordEvents.RaiseRoleDeleted(this, new RoleEvent { Role = role, Guild = guild });
+        };
+
+        // Thread events
+        _gateway.ThreadCreate += (_, thread) =>
+        {
+            string? gid = thread.Guild_Id;
+            if (gid is null) return;
+            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+            DiscordEvents.RaiseThreadCreated(this, new ThreadEvent { Thread = thread, Guild = guild });
+        };
+        _gateway.ThreadUpdate += (_, thread) =>
+        {
+            string? gid = thread.Guild_Id;
+            if (gid is null) return;
+            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+            DiscordEvents.RaiseThreadUpdated(this, new ThreadEvent { Thread = thread, Guild = guild });
+        };
+        _gateway.ThreadDelete += (_, thread) =>
+        {
+            string? gid = thread.Guild_Id;
+            if (gid is null) return;
+            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+            DiscordEvents.RaiseThreadDeleted(this, new ThreadEvent { Thread = thread, Guild = guild });
+        };
+
         // Member events
         _gateway.GuildMemberAdd += (_, e) =>
         {
@@ -371,9 +774,18 @@ public sealed class DiscordBot : IDiscordBot
 
         // Bot user change
         _gateway.UserUpdate += (_, u) => DiscordEvents.RaiseBotUserUpdated(this, new BotUserEvent { User = u });
-    }
 
-    // Reflection-based auto registration removed for pure source-generator mode
+        // Message events
+        _gateway.MessageUpdate += (_, e) => DiscordEvents.RaiseMessageUpdated(this, e);
+        _gateway.MessageDelete += (_, e) => DiscordEvents.RaiseMessageDeleted(this, e);
+        _gateway.MessageDeleteBulk += (_, e) => DiscordEvents.RaiseMessagesBulkDeleted(this, e);
+
+        // Reaction events
+        _gateway.MessageReactionAdd += (_, e) => DiscordEvents.RaiseReactionAdded(this, e);
+        _gateway.MessageReactionRemove += (_, e) => DiscordEvents.RaiseReactionRemoved(this, e);
+        _gateway.MessageReactionRemoveAll += (_, e) => DiscordEvents.RaiseReactionsCleared(this, e);
+        _gateway.MessageReactionRemoveEmoji += (_, e) => DiscordEvents.RaiseReactionsClearedForEmoji(this, e);
+    }
 
     /// <summary>
     /// Disposes managed resources asynchronously.
@@ -434,10 +846,7 @@ public sealed class DiscordBot : IDiscordBot
             // Preserve prior behavior on top of source-generated options
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
             PropertyNameCaseInsensitive = true,
-            // Ensure fallback to runtime for types not covered by the context (e.g., gateway payload helpers)
-            TypeInfoResolver = System.Text.Json.Serialization.Metadata.JsonTypeInfoResolver.Combine(
-                Serialization.DiscordJsonContext.Default,
-                new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver())
+            TypeInfoResolver = Serialization.DiscordJsonContext.Default
         };
         private NativeLogger _logger = new();
         private TimeProvider? _timeProvider;
@@ -445,7 +854,7 @@ public sealed class DiscordBot : IDiscordBot
         private bool _preloadChannels;
         private bool _preloadMembers;
         private bool _developmentMode;
-        private readonly List<string> _developmentGuildIds = new();
+        private readonly List<string> _developmentGuildIds = [];
 
         /// <summary>
         /// Sets the bot token used for authentication.
@@ -582,14 +991,14 @@ public sealed class DiscordBot : IDiscordBot
         {
             if (_preloadGuilds || _preloadChannels || _preloadMembers)
             {
-                Guild[] guilds = await _rest.GetAsync<Guild[]>("/users/@me/guilds", ct).ConfigureAwait(false) ?? Array.Empty<Guild>();
+                Guild[] guilds = await _rest.GetAsync<Guild[]>("/users/@me/guilds", ct).ConfigureAwait(false) ?? [];
                 _cache.ReplaceGuilds(guilds);
 
                 if (_preloadChannels)
                 {
                     foreach (Guild g in guilds)
                     {
-                        Channel[] ch = await GetGuildChannelsAsync(g.Id, ct).ConfigureAwait(false) ?? Array.Empty<Channel>();
+                        Channel[] ch = await GetGuildChannelsAsync(g.Id, ct).ConfigureAwait(false) ?? [];
                         _cache.SetChannels(g.Id, ch);
                     }
                 }

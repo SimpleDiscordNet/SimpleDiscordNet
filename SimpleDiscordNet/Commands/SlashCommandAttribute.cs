@@ -1,4 +1,4 @@
-﻿namespace SimpleDiscordNet.Commands;
+namespace SimpleDiscordNet.Commands;
 
 /// <summary>
 /// Marks a method as a slash command handler.
@@ -11,10 +11,10 @@ public sealed class SlashCommandAttribute : Attribute
 {
     /// <summary>Command name (ungrouped) or subcommand name (when class has SlashCommandGroupAttribute).</summary>
     public string Name { get; }
-    /// <summary>Human-readable description (1-100 chars).</summary>
-    public string Description { get; }
+    /// <summary>Human-readable description (1-100 chars). Optional.</summary>
+    public string? Description { get; }
 
-    public SlashCommandAttribute(string name, string description)
+    public SlashCommandAttribute(string name, string? description = null)
     {
         Name = name;
         Description = description;

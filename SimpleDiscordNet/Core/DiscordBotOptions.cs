@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using SimpleDiscordNet.Logging;
 
 namespace SimpleDiscordNet;
@@ -19,9 +19,7 @@ public sealed record DiscordBotOptions
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = true,
-        TypeInfoResolver = System.Text.Json.Serialization.Metadata.JsonTypeInfoResolver.Combine(
-            SimpleDiscordNet.Serialization.DiscordJsonContext.Default,
-            new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver())
+        TypeInfoResolver = SimpleDiscordNet.Serialization.DiscordJsonContext.Default
     };
 
     /// <summary>Optional time provider for testing or customization.</summary>

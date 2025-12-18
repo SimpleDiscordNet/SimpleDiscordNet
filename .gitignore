@@ -13,6 +13,7 @@ TestResults/
 # JetBrains Rider / IntelliJ
 .idea/
 *.iml
+*.DotSettings.user
 
 # Visual Studio
 *.suo
