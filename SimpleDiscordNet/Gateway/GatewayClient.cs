@@ -1,4 +1,5 @@
-﻿using System.Net.WebSockets;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Net.WebSockets;
 using System.Text.Json;
 using SimpleDiscordNet.Entities;
 using SimpleDiscordNet.Logging;
@@ -7,6 +8,8 @@ using SimpleDiscordNet.Events;
 
 namespace SimpleDiscordNet.Gateway;
 
+[UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code", Justification = "GatewayClient uses JsonSerializerOptions configured with source-generated DiscordJsonContext for all gateway payload types.")]
+[UnconditionalSuppressMessage("AOT", "IL3050:Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.", Justification = "GatewayClient uses JsonSerializerOptions configured with source-generated DiscordJsonContext for all gateway payload types.")]
 internal sealed partial class GatewayClient(string token, DiscordIntents intents, JsonSerializerOptions json, NativeLogger logger, TimeProvider time)
     : IDisposable
 {
@@ -41,6 +44,14 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
     public event EventHandler<Channel>? ChannelUpdate;
     public event EventHandler<Channel>? ChannelDelete;
 
+    public event EventHandler<Role>? GuildRoleCreate;
+    public event EventHandler<Role>? GuildRoleUpdate;
+    public event EventHandler<Role>? GuildRoleDelete;
+
+    public event EventHandler<Channel>? ThreadCreate;
+    public event EventHandler<Channel>? ThreadUpdate;
+    public event EventHandler<Channel>? ThreadDelete;
+
     public event EventHandler<GatewayMemberEvent>? GuildMemberAdd;
     public event EventHandler<GatewayMemberEvent>? GuildMemberUpdate;
     public event EventHandler<GatewayMemberEvent>? GuildMemberRemove; // Member user-only on remove
@@ -49,6 +60,15 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
     public event EventHandler<GatewayUserEvent>? GuildBanRemove;
 
     public event EventHandler<User>? UserUpdate; // Bot user
+
+    public event EventHandler<MessageUpdateEvent>? MessageUpdate;
+    public event EventHandler<MessageEvent>? MessageDelete;
+    public event EventHandler<MessageEvent>? MessageDeleteBulk;
+
+    public event EventHandler<ReactionEvent>? MessageReactionAdd;
+    public event EventHandler<ReactionEvent>? MessageReactionRemove;
+    public event EventHandler<MessageEvent>? MessageReactionRemoveAll;
+    public event EventHandler<ReactionEvent>? MessageReactionRemoveEmoji;
 
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
@@ -186,6 +206,34 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
             TryEmitChannelEvent(data, ChannelDelete);
         }
 
+        // Role events
+        else if (string.Equals(eventName, "GUILD_ROLE_CREATE", StringComparison.Ordinal))
+        {
+            TryEmitRoleEvent(data, GuildRoleCreate);
+        }
+        else if (string.Equals(eventName, "GUILD_ROLE_UPDATE", StringComparison.Ordinal))
+        {
+            TryEmitRoleEvent(data, GuildRoleUpdate);
+        }
+        else if (string.Equals(eventName, "GUILD_ROLE_DELETE", StringComparison.Ordinal))
+        {
+            TryEmitRoleDeleteEvent(data, GuildRoleDelete);
+        }
+
+        // Thread events
+        else if (string.Equals(eventName, "THREAD_CREATE", StringComparison.Ordinal))
+        {
+            TryEmitChannelEvent(data, ThreadCreate);
+        }
+        else if (string.Equals(eventName, "THREAD_UPDATE", StringComparison.Ordinal))
+        {
+            TryEmitChannelEvent(data, ThreadUpdate);
+        }
+        else if (string.Equals(eventName, "THREAD_DELETE", StringComparison.Ordinal))
+        {
+            TryEmitChannelEvent(data, ThreadDelete);
+        }
+
         // Member events
         else if (string.Equals(eventName, "GUILD_MEMBER_ADD", StringComparison.Ordinal))
         {
@@ -220,6 +268,39 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
             }
             catch (Exception ex) { Error?.Invoke(this, ex); }
         }
+
+        // Message events
+        else if (string.Equals(eventName, "MESSAGE_UPDATE", StringComparison.Ordinal))
+        {
+            TryEmitMessageUpdateEvent(data, MessageUpdate);
+        }
+        else if (string.Equals(eventName, "MESSAGE_DELETE", StringComparison.Ordinal))
+        {
+            TryEmitMessageDeleteEvent(data, MessageDelete);
+        }
+        else if (string.Equals(eventName, "MESSAGE_DELETE_BULK", StringComparison.Ordinal))
+        {
+            TryEmitMessageDeleteBulkEvent(data, MessageDeleteBulk);
+        }
+
+        // Reaction events
+        else if (string.Equals(eventName, "MESSAGE_REACTION_ADD", StringComparison.Ordinal))
+        {
+            TryEmitReactionEvent(data, MessageReactionAdd);
+        }
+        else if (string.Equals(eventName, "MESSAGE_REACTION_REMOVE", StringComparison.Ordinal))
+        {
+            TryEmitReactionEvent(data, MessageReactionRemove);
+        }
+        else if (string.Equals(eventName, "MESSAGE_REACTION_REMOVE_ALL", StringComparison.Ordinal))
+        {
+            TryEmitMessageDeleteEvent(data, MessageReactionRemoveAll);
+        }
+        else if (string.Equals(eventName, "MESSAGE_REACTION_REMOVE_EMOJI", StringComparison.Ordinal))
+        {
+            TryEmitReactionRemoveEmojiEvent(data, MessageReactionRemoveEmoji);
+        }
+
         // Interactions (slash commands, components, modals)
         else if (string.Equals(eventName, "INTERACTION_CREATE", StringComparison.Ordinal))
         {

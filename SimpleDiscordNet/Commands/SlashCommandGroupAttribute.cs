@@ -1,4 +1,4 @@
-﻿namespace SimpleDiscordNet.Commands;
+namespace SimpleDiscordNet.Commands;
 
 /// <summary>
 /// Marks a class as a slash command group. All methods in the class annotated with
@@ -10,10 +10,10 @@ public sealed class SlashCommandGroupAttribute : Attribute
 {
     /// <summary>Top-level group name.</summary>
     public string Name { get; }
-    /// <summary>Human-readable group description (1-100 chars).</summary>
-    public string Description { get; }
+    /// <summary>Human-readable group description (1-100 chars). Optional.</summary>
+    public string? Description { get; }
 
-    public SlashCommandGroupAttribute(string name, string description)
+    public SlashCommandGroupAttribute(string name, string? description = null)
     {
         Name = name;
         Description = description;

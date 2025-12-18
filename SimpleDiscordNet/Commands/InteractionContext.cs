@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using SimpleDiscordNet.Models;
 using SimpleDiscordNet.Models.Requests;
 using SimpleDiscordNet.Primitives;
@@ -38,7 +38,7 @@ public sealed class InteractionContext
     };
 
     public string? MessageId => _evt.Component?.MessageId;
-    public IReadOnlyList<string> SelectedValues => _evt.Component?.Values ?? Array.Empty<string>();
+    public IReadOnlyList<string> SelectedValues => _evt.Component?.Values ?? [];
 
     internal InteractionContext(RestClient rest, InteractionCreateEvent evt)
     {
@@ -103,7 +103,9 @@ public sealed class InteractionContext
     }
 
     /// <summary>
-    /// Defers the interaction response to allow more processing time.
+    /// Defers the interaction response to allow more processing time (type 5).
+    /// Use this for slash commands when you need longer than 3 seconds before sending a message.
+    /// Prefer calling this explicitly or annotating the handler with [Defer] if you want the SDK to do it automatically.
     /// </summary>
     public Task DeferAsync(bool ephemeral = false, CancellationToken ct = default)
     {
@@ -121,6 +123,13 @@ public sealed class InteractionContext
             t.GetAwaiter().GetResult();
         }, ct);
     }
+
+    /// <summary>
+    /// Alias for <see cref="DeferAsync(bool, System.Threading.CancellationToken)"/>.
+    /// Provided for readability when working with slash commands.
+    /// </summary>
+    public Task DeferResponseAsync(bool ephemeral = false, CancellationToken ct = default)
+        => DeferAsync(ephemeral, ct);
 
     /// <summary>
     /// Sends a follow-up message for a previously deferred interaction.
@@ -182,12 +191,13 @@ public sealed class InteractionContext
 
     /// <summary>
     /// Opens a modal in response to an interaction.
+    /// This must be the initial response. Do not defer before opening a modal.
     /// </summary>
     public Task OpenModalAsync(string customId, string title, params object[] actionRows)
     {
         if (_deferred || _deferredUpdate)
         {
-            throw new InvalidOperationException("Cannot open a modal after the interaction has been deferred. Disable auto-defer for this handler or open the modal as the initial response.");
+            throw new InvalidOperationException("Cannot open a modal after the interaction has been deferred. Do not apply [Defer] to this handler and avoid calling ctx.DeferResponseAsync before opening the modal.");
         }
         var modal = new OpenModalRequest
         {

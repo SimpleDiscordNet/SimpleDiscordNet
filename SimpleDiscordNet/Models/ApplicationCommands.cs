@@ -1,4 +1,4 @@
-﻿namespace SimpleDiscordNet.Models;
+namespace SimpleDiscordNet.Models;
 
 /// <summary>
 /// Minimal definition model for Discord application commands used for sync (guild-scoped during development).

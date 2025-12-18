@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using SimpleDiscordNet.Entities;
 using SimpleDiscordNet.Models.Context;
 
@@ -64,6 +64,17 @@ internal sealed class EntityCache
         {
             if (!_membersByGuild.TryGetValue(gid, out List<Member>? members)) continue;
             list.AddRange(members.Select(member => new UserWithGuild(member.User, guild, member)));
+        }
+        return list;
+    }
+
+    public IReadOnlyList<RoleWithGuild> SnapshotRoles()
+    {
+        List<RoleWithGuild> list = new(1024);
+        foreach ((string gid, Guild guild) in _guilds)
+        {
+            if (guild.Roles == null) continue;
+            list.AddRange(guild.Roles.Select(role => new RoleWithGuild(role, guild)));
         }
         return list;
     }

@@ -3,13 +3,30 @@
 
 A tiny, dependency‑free Discord bot SDK for .NET 10 that talks directly to the Discord API v10 (REST + Gateway).
 
-- Slash commands only (Discord is deprecating text prefix commands)
-- No extra NuGet packages required
+**Core features:**
+- Slash commands, components, and modals with attribute-based handlers
+- No extra NuGet packages required (BCL only)
 - Builder pattern and DI‑friendly
 - Global static event hub for logs and domain events
-- Simple embeds, attachments, color helpers
 - Minimal, rate‑limit‑aware REST client
-- Ambient attributes + context to access cached Guilds/Channels/Members/Users from anywhere
+- Source generator for zero-reflection command/component discovery
+
+**Rich Discord API v10 support:**
+- Messages: send, edit, delete, bulk delete, pin/unpin
+- Reactions: add, remove, clear, get users who reacted
+- Embeds, attachments, and components (buttons, selects, modals)
+- Permissions: channel overwrites (per-role and per-member)
+- Roles: create, edit, delete, assign/remove, permission checking
+- Channels: create, edit, delete, categories, text, voice
+- Threads: create, join, leave, add/remove members
+- Members: kick, ban, unban, role assignment
+- Events: comprehensive gateway events for all entity changes
+
+**Ambient DiscordContext:**
+- Access cached Guilds/Channels/Members/Users/Roles from anywhere
+- Filtered collections (Categories, TextChannels, VoiceChannels, Threads)
+- Helper methods for querying by guild, category, role, etc.
+- Type-safe, read-only snapshots
 
 This project is designed for simplicity, performance, and low memory usage, while keeping a small, approachable API.
 
@@ -116,15 +133,15 @@ using SimpleDiscordNet.Commands;
 
 public sealed class AppCommands
 {
-    [SlashCommand("hello", "Say hello")]
+    [SlashCommand("hello", "Say hello")] // description optional; you can omit it
     public async Task HelloAsync(InteractionContext ctx)
         => await ctx.RespondAsync("Hello!", ephemeral: true);
 }
 
-[SlashCommandGroup("util", "Utility commands")]
+[SlashCommandGroup("util")] // description optional; you can omit it
 public sealed class UtilCommands
 {
-    [SlashCommand("ping", "Ping the bot")]
+    [SlashCommand("ping")] // defaults to a generic description if omitted
     public async Task PingAsync(InteractionContext ctx)
         => await ctx.RespondAsync("Pong!");
 
@@ -137,6 +154,7 @@ public sealed class UtilCommands
 Notes
 - Names are normalized to lowercase and must be 1–32 chars of a–z, 0–9, '-', '_'.
 - Grouped commands become subcommands under the top‑level group.
+- Descriptions on [SlashCommand] and [SlashCommandGroup] are optional. If omitted, the generator supplies a sensible default when syncing with Discord.
 - In development mode, per‑guild sync is instant; in production you can call SyncSlashCommandsAsync with specific guilds.
 
 
@@ -217,14 +235,15 @@ await Task.Delay(TimeSpan.FromSeconds(10));
 await bot.StopAsync();
 ```
 
-Ambient data access with attributes
------------------------------------
-Mark any class or method in any project with these attributes to indicate you intend to consume cached data. Then read from DiscordContext. This is ambient (not tied to CommandContext) and works anywhere in your app.
+Ambient data access with DiscordContext
+---------------------------------------
+Mark any class or method with `[DiscordContext]` to indicate you intend to consume cached data. Then read from `DiscordContext`. This is ambient (not tied to CommandContext) and works anywhere in your app.
 
 Available attribute (namespace: SimpleDiscordNet.Attributes):
 - [DiscordContext]
 
-Access the data via SimpleDiscordNet.Context.DiscordContext:
+### Collections
+Access all cached entities via SimpleDiscordNet.Context.DiscordContext:
 ```csharp
 using SimpleDiscordNet.Attributes;
 using SimpleDiscordNet.Context;
@@ -234,20 +253,66 @@ public sealed class MyService
 {
     public void DoWork()
     {
-        var channels = DiscordContext.Channels;   // IReadOnlyList<ChannelWithGuild>
+        // All collections
         var guilds   = DiscordContext.Guilds;     // IReadOnlyList<Guild>
-    }
-}
+        var channels = DiscordContext.Channels;   // IReadOnlyList<ChannelWithGuild>
+        var members  = DiscordContext.Members;    // IReadOnlyList<MemberWithGuild>
+        var users    = DiscordContext.Users;      // IReadOnlyList<UserWithGuild>
+        var roles    = DiscordContext.Roles;      // IReadOnlyList<RoleWithGuild>
 
-[DiscordContext]
-public sealed class AnotherService
-{
-    public void Inspect()
-    {
-        var members = DiscordContext.Members;     // IReadOnlyList<MemberWithGuild>
-        var users   = DiscordContext.Users;       // IReadOnlyList<UserWithGuild>
+        // Filtered collections
+        var categories    = DiscordContext.Categories;    // All category channels
+        var textChannels  = DiscordContext.TextChannels;  // All text channels
+        var voiceChannels = DiscordContext.VoiceChannels; // All voice channels
+        var threads       = DiscordContext.Threads;       // All thread channels
     }
 }
+```
+
+### Helper methods for querying data
+```csharp
+[DiscordContext]
+public sealed class DataService
+{
+    public void QueryData()
+    {
+        // Get entities by guild
+        var channels = DiscordContext.GetChannelsInGuild(guildId);
+        var categories = DiscordContext.GetCategoriesInGuild(guildId);
+        var members = DiscordContext.GetMembersInGuild(guildId);
+        var roles = DiscordContext.GetRolesInGuild(guildId);
+
+        // Get channels in a category
+        var channelsInCategory = DiscordContext.GetChannelsInCategory(categoryId);
+
+        // Find specific entities
+        var guild = DiscordContext.GetGuild(guildId);
+        var channel = DiscordContext.GetChannel(channelId);
+        var member = DiscordContext.GetMember(guildId, userId);
+        var role = DiscordContext.GetRole(roleId);
+    }
+}
+```
+
+### Context types with convenience properties
+```csharp
+// ChannelWithGuild provides quick access to common properties
+var channel = DiscordContext.GetChannel(channelId);
+string id = channel.Id;           // Channel ID
+string name = channel.Name;       // Channel name
+int type = channel.Type;          // Channel type
+string guildId = channel.GuildId; // Guild ID
+string guildName = channel.GuildName; // Guild name
+
+// MemberWithGuild provides member-specific access
+var member = DiscordContext.GetMember(guildId, userId);
+string displayName = member.DisplayName;  // Nick or username
+bool hasRole = member.HasRole(roleId);    // Check role membership
+
+// RoleWithGuild provides role-specific access
+var role = DiscordContext.GetRole(roleId);
+bool isAdmin = role.IsAdministrator;     // Check admin permission
+bool hasPerms = role.HasPermission(PermissionFlags.ManageChannels);
 ```
 
 Preloading cache
@@ -267,20 +332,66 @@ var bot = DiscordBot.NewBuilder()
 Events (global static)
 ----------------------
 Subscribe anywhere using SimpleDiscordNet.Events.DiscordEvents:
+
+**Connection events:**
 - Connected, Disconnected, Error, Log
+
+**Guild events:**
 - GuildAdded, GuildUpdated, GuildRemoved
+
+**Channel events:**
 - ChannelCreated, ChannelUpdated, ChannelDeleted
+
+**Member events:**
 - MemberJoined, MemberUpdated, MemberLeft
+
+**Role events:**
+- RoleCreated, RoleUpdated, RoleDeleted
+
+**Message events:**
+- MessageUpdated, MessageDeleted, MessagesBulkDeleted
+
+**Reaction events:**
+- ReactionAdded, ReactionRemoved, ReactionsCleared, ReactionsClearedForEmoji
+
+**Thread events:**
+- ThreadCreated, ThreadUpdated, ThreadDeleted
+
+**Ban events:**
 - BanAdded, BanRemoved
+
+**Bot events:**
 - BotUserUpdated (bot user only)
 
 ```csharp
 using SimpleDiscordNet.Events;
 
-DiscordEvents.GuildAdded += (_, e) => Console.WriteLine($"Guild added: {e.Guild.Name}");
-DiscordEvents.ChannelCreated += (_, e) => Console.WriteLine($"#{e.Channel.Name} in {e.Guild.Name}");
-DiscordEvents.MemberJoined += (_, e) => Console.WriteLine($"Member joined: {e.User.Username} -> {e.Guild.Name}");
+// Connection events
+DiscordEvents.Connected += (_, _) => Console.WriteLine("Bot connected");
 DiscordEvents.Log += (_, m) => Console.WriteLine($"[{m.Level}] {m.Message}");
+
+// Guild events
+DiscordEvents.GuildAdded += (_, e) => Console.WriteLine($"Guild added: {e.Guild.Name}");
+
+// Channel events
+DiscordEvents.ChannelCreated += (_, e) => Console.WriteLine($"#{e.Channel.Name} in {e.Guild.Name}");
+
+// Member events
+DiscordEvents.MemberJoined += (_, e) => Console.WriteLine($"Member joined: {e.User.Username} -> {e.Guild.Name}");
+
+// Role events
+DiscordEvents.RoleCreated += (_, e) => Console.WriteLine($"Role created: {e.Role.Name} in {e.Guild.Name}");
+
+// Message events
+DiscordEvents.MessageUpdated += (_, e) => Console.WriteLine($"Message updated: {e.MessageId}");
+DiscordEvents.MessageDeleted += (_, e) => Console.WriteLine($"Message deleted: {e.MessageId}");
+
+// Reaction events
+DiscordEvents.ReactionAdded += (_, e) => Console.WriteLine($"Reaction added: {e.Emoji.Name}");
+DiscordEvents.ReactionRemoved += (_, e) => Console.WriteLine($"Reaction removed: {e.Emoji.Name}");
+
+// Thread events
+DiscordEvents.ThreadCreated += (_, e) => Console.WriteLine($"Thread created: {e.Thread.Name}");
 ```
 
 
@@ -306,13 +417,202 @@ await bot.SendAttachmentAsync(channelId, "Here is a file", "hello.txt", bytes, e
 ```
 
 
+Message management
+------------------
+```csharp
+// Get a message
+var message = await bot.GetMessageAsync(channelId, messageId);
+
+// Edit a message
+await bot.EditMessageAsync(channelId, messageId, "Updated content");
+
+// Delete a message
+await bot.DeleteMessageAsync(channelId, messageId);
+
+// Bulk delete messages (2-100 messages, must be < 14 days old)
+await bot.BulkDeleteMessagesAsync(channelId, new[] { messageId1, messageId2, messageId3 });
+
+// Pin/unpin messages
+await bot.PinMessageAsync(channelId, messageId);
+await bot.UnpinMessageAsync(channelId, messageId);
+var pinnedMessages = await bot.GetPinnedMessagesAsync(channelId);
+```
+
+
+Reactions
+---------
+```csharp
+using SimpleDiscordNet.Entities;
+
+// Add a reaction (Unicode emoji)
+await bot.AddReactionAsync(channelId, messageId, "👍");
+
+// Add a reaction (custom emoji)
+await bot.AddReactionAsync(channelId, messageId, "custom_emoji:123456789");
+
+// Remove a reaction
+await bot.RemoveReactionAsync(channelId, messageId, "👍");
+
+// Remove all reactions
+await bot.RemoveAllReactionsAsync(channelId, messageId);
+
+// Remove all reactions for a specific emoji
+await bot.RemoveAllReactionsForEmojiAsync(channelId, messageId, "👍");
+
+// Get users who reacted
+var users = await bot.GetReactionUsersAsync<User>(channelId, messageId, "👍", limit: 100);
+
+// Helper for creating emoji objects
+var unicodeEmoji = Emoji.Unicode("🎉");
+var customEmoji = Emoji.Custom("party", "123456789", animated: true);
+```
+
+
+Permissions and roles
+---------------------
+```csharp
+using SimpleDiscordNet.Primitives;
+
+// Channel permission overwrites
+// Get overwrites for a channel
+var channel = await bot.GetChannelAsync<Channel>(channelId);
+var roleOverwrite = channel.GetOverwrite(roleId);
+var memberOverwrite = channel.GetOverwrite(userId);
+
+// Get all role/member overwrites
+var roleOverwrites = channel.GetRoleOverwrites();
+var memberOverwrites = channel.GetMemberOverwrites();
+
+// Edit channel permission overwrites
+await bot.EditChannelPermissionsAsync(channelId, targetId,
+    allow: (ulong)PermissionFlags.ViewChannel | (ulong)PermissionFlags.SendMessages,
+    deny: (ulong)PermissionFlags.MentionEveryone,
+    type: 0); // 0 = role, 1 = member
+
+// Delete permission overwrite
+await bot.DeleteChannelPermissionsAsync(channelId, targetId);
+
+// Role management
+// Create a role
+await bot.CreateGuildRoleAsync(guildId,
+    name: "Moderator",
+    permissions: (ulong)(PermissionFlags.KickMembers | PermissionFlags.BanMembers),
+    color: 0x3498db,
+    hoist: true,
+    mentionable: true);
+
+// Edit a role
+await bot.EditGuildRoleAsync(guildId, roleId, name: "Admin", color: 0xe74c3c);
+
+// Delete a role
+await bot.DeleteGuildRoleAsync(guildId, roleId);
+
+// Assign/remove roles
+await bot.AddMemberRoleAsync(guildId, userId, roleId);
+await bot.RemoveMemberRoleAsync(guildId, userId, roleId);
+
+// Check role permissions
+var role = await bot.GetGuildRolesAsync(guildId);
+bool hasPerms = role.First().HasPermission(PermissionFlags.Administrator);
+bool isAdmin = role.First().IsAdministrator;
+```
+
+
+Channel and category management
+-------------------------------
+```csharp
+// Create a text channel
+await bot.CreateGuildChannelAsync(guildId, name: "general", type: 0);
+
+// Create a category
+await bot.CreateGuildChannelAsync(guildId, name: "Community", type: 4);
+
+// Create a channel in a category
+await bot.CreateGuildChannelAsync(guildId, name: "chat", type: 0, parentId: categoryId);
+
+// Edit a channel
+await bot.ModifyGuildChannelAsync(channelId, name: "new-name", topic: "New topic");
+
+// Delete a channel
+await bot.DeleteGuildChannelAsync(channelId);
+
+// Channel helpers
+var channel = await bot.GetChannelAsync<Channel>(channelId);
+bool isCategory = channel.IsCategory;
+bool isText = channel.IsTextChannel;
+bool isVoice = channel.IsVoiceChannel;
+bool isThread = channel.IsThread;
+
+// Get channels in a category
+var channelsInCategory = DiscordContext.GetChannelsInCategory(categoryId);
+```
+
+
+Thread management
+----------------
+```csharp
+// Create a thread from a message
+await bot.CreateThreadFromMessageAsync(channelId, messageId,
+    name: "Discussion",
+    autoArchiveDuration: 1440); // minutes
+
+// Create a thread without a message
+await bot.CreateThreadAsync(channelId,
+    name: "New Thread",
+    type: 11, // 11 = public thread, 12 = private thread
+    autoArchiveDuration: 1440);
+
+// Join a thread
+await bot.JoinThreadAsync(threadId);
+
+// Leave a thread
+await bot.LeaveThreadAsync(threadId);
+
+// Add a member to a thread
+await bot.AddThreadMemberAsync(threadId, userId);
+
+// Remove a member from a thread
+await bot.RemoveThreadMemberAsync(threadId, userId);
+
+// Thread type constants
+// 10 = announcement thread (news channel)
+// 11 = public thread (text channel)
+// 12 = private thread (text channel)
+```
+
+
+Member moderation
+----------------
+```csharp
+// Kick a member
+await bot.KickMemberAsync(guildId, userId);
+
+// Ban a member
+await bot.BanMemberAsync(guildId, userId, deleteMessageDays: 7);
+
+// Unban a member
+await bot.UnbanMemberAsync(guildId, userId);
+
+// Typing indicator (shows "Bot is typing..." for ~10 seconds)
+await bot.TriggerTypingIndicatorAsync(channelId);
+```
+
+
 REST helpers
 ------------
 ```csharp
+// Guilds
 var guild = await bot.GetGuildAsync(guildId);
 var channels = await bot.GetGuildChannelsAsync(guildId);
 var roles = await bot.GetGuildRolesAsync(guildId);
 var members = await bot.ListGuildMembersAsync(guildId, limit: 1000);
+
+// Channels
+var channel = await bot.GetChannelAsync<Channel>(channelId);
+
+// Messages
+var message = await bot.GetMessageAsync(channelId, messageId);
+var pinnedMessages = await bot.GetPinnedMessagesAsync(channelId);
 ```
 
 
@@ -381,8 +681,9 @@ public sealed class ComponentDemo
     [ComponentHandler("choose:", prefix: true)]
     public async Task HandleChoiceAsync(InteractionContext ctx)
     {
-        // When a button is clicked, ComponentService defers the update for you.
-        // Use UpdateMessageAsync to modify the original message.
+        // If you want to show a loading state on the original message, either:
+        // 1) annotate this handler with [Defer], or
+        // 2) call ctx.DeferUpdateAsync() manually, then update the message.
         await ctx.UpdateMessageAsync("Thanks! You clicked a button.");
     }
 }
@@ -431,9 +732,8 @@ Modals (open and handle submit)
 public sealed class ModalDemo
 {
     // IMPORTANT: Opening a modal must be the first response.
-    // Disable auto-defer for this handler so the modal can be sent immediately.
+    // Do not defer before opening the modal.
     [SlashCommand("modal", "Open a modal")] 
-    [AutoDefer(false)]
     public async Task ShowModalAsync(InteractionContext ctx)
     {
         // Show a modal with two inputs
@@ -461,9 +761,7 @@ Open a modal from a component click (button/select)
 ```csharp
 public sealed class EditFromComponentDemo
 {
-    // Disable auto-defer because we want to open a modal instead of deferring the update
     [ComponentHandler("edit:user")]
-    [AutoDefer(false)]
     public async Task OnEditUserAsync(InteractionContext ctx)
     {
         await ctx.OpenModalAsync(
@@ -477,8 +775,14 @@ public sealed class EditFromComponentDemo
 
 Notes
 - `[ComponentHandler]` can be applied multiple times per method. Use `prefix: true` to route a family of `custom_id` values.
-- For component clicks (buttons/selects), the library auto‑defers the update by default; call `UpdateMessageAsync` or send a follow‑up with `RespondAsync(...)` after deferring. You can disable auto‑defer per handler with `[AutoDefer(false)]`.
-- For modals, call `OpenModalAsync(...)` as the initial response; if you plan to open a modal from a slash command or a component handler, annotate the method with `[AutoDefer(false)]` so the first response can be the modal. The submit is routed by the modal’s `custom_id`.
+- Default is no automatic deferral. To auto-defer, annotate handlers with `[Defer]` (no parameters) or call `ctx.DeferResponseAsync(...)` for slash commands and `ctx.DeferUpdateAsync()` for components.
+- For modals, call `OpenModalAsync(...)` as the initial response; do not defer before opening a modal. The submit is routed by the modal's `custom_id`.
+
+Defer options (explicit)
+------------------------
+- Attribute: `[Defer]` — apply to a handler to have the SDK automatically send a deferred response before invoking your code.
+- Manual (slash): `await ctx.DeferResponseAsync(ephemeral: false);` then follow up with `ctx.FollowupAsync(...)` or patch the original.
+- Manual (components): `await ctx.DeferUpdateAsync();` then call `ctx.UpdateMessageAsync(...)`.
 
 Advanced: full interaction details in context
 - `ctx.Type` → InteractionType (ApplicationCommand, MessageComponent, ModalSubmit)

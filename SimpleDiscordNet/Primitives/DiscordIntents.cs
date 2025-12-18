@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace SimpleDiscordNet;
 
@@ -21,4 +21,9 @@ public enum DiscordIntents : uint
     DirectMessageReactions = 1 << 13,
     DirectMessageTyping = 1 << 14,
     MessageContent = 1 << 15,
+    GuildScheduledEvents = 1 << 16,
+    AutoModerationConfiguration = 1 << 20,
+    AutoModerationExecution = 1 << 21,
+    GuildMessagePolls = 1 << 24,
+    DirectMessagePolls = 1 << 25,
 }

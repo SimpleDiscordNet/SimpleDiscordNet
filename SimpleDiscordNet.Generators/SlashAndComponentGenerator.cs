@@ -14,7 +14,7 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
     private const string SlashAttr = "SimpleDiscordNet.Commands.SlashCommandAttribute";
     private const string SlashGroupAttr = "SimpleDiscordNet.Commands.SlashCommandGroupAttribute";
     private const string ComponentAttr = "SimpleDiscordNet.Commands.ComponentHandlerAttribute";
-    private const string AutoDeferAttr = "SimpleDiscordNet.Commands.AutoDeferAttribute";
+    private const string DeferAttr = "SimpleDiscordNet.Commands.DeferAttribute";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -43,7 +43,7 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
         bool isComponent = false;
         string? slashName = null;
         string? slashDescription = null;
-        bool autoDefer = true; // default true per runtime
+        bool autoDefer = false; // default: no auto-defer unless [Defer]
         string? componentId = null;
         bool componentPrefix = false;
 
@@ -66,10 +66,9 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
                 if (ad.ConstructorArguments.Length >= 2 && ad.ConstructorArguments[1].Value is bool b)
                     componentPrefix = b;
             }
-            else if (name == AutoDeferAttr)
+            else if (name == DeferAttr)
             {
-                if (ad.ConstructorArguments.Length == 1 && ad.ConstructorArguments[0].Value is bool b)
-                    autoDefer = b;
+                autoDefer = true; // explicit [Defer] forces defer
             }
         }
 
