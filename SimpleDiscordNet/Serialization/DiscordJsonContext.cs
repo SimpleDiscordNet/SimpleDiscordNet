@@ -4,6 +4,7 @@ using SimpleDiscordNet.Gateway;
 using SimpleDiscordNet.Models;
 using SimpleDiscordNet.Models.Context;
 using SimpleDiscordNet.Models.Requests;
+using SimpleDiscordNet.Primitives;
 
 namespace SimpleDiscordNet.Serialization;
 
@@ -14,7 +15,9 @@ namespace SimpleDiscordNet.Serialization;
 [JsonSerializable(typeof(Guild))]
 [JsonSerializable(typeof(Guild[]))]
 [JsonSerializable(typeof(Channel))]
+[JsonSerializable(typeof(Channel[]))]
 [JsonSerializable(typeof(Role))]
+[JsonSerializable(typeof(Role[]))]
 [JsonSerializable(typeof(Member))]
 [JsonSerializable(typeof(Member[]))]
 [JsonSerializable(typeof(Embed))]
@@ -24,6 +27,17 @@ namespace SimpleDiscordNet.Serialization;
 [JsonSerializable(typeof(ModalData))]
 [JsonSerializable(typeof(ApplicationCommandDefinition))]
 [JsonSerializable(typeof(ApplicationCommandDefinition[]))]
+[JsonSerializable(typeof(InteractionResponse))]
+[JsonSerializable(typeof(InteractionResponseData))]
+[JsonSerializable(typeof(ActionRow))]
+[JsonSerializable(typeof(Button))]
+[JsonSerializable(typeof(StringSelect))]
+[JsonSerializable(typeof(SelectOption))]
+[JsonSerializable(typeof(UserSelect))]
+[JsonSerializable(typeof(RoleSelect))]
+[JsonSerializable(typeof(MentionableSelect))]
+[JsonSerializable(typeof(ChannelSelect))]
+[JsonSerializable(typeof(TextInput))]
 [JsonSerializable(typeof(ChannelWithGuild))]
 [JsonSerializable(typeof(MemberWithGuild))]
 [JsonSerializable(typeof(RoleWithGuild))]

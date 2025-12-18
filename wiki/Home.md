@@ -38,6 +38,7 @@ dotnet add package SimpleDiscordDotNet
 - **Threads:** create, join, leave, add/remove members
 - **Moderation:** kick, ban, unban, role assignment
 - **Events:** comprehensive gateway events for all entity changes
+- **Rate Limiting:** enterprise-grade with bucket tracking, monitoring, and zero message loss
 
 ### Ambient DiscordContext
 - Access cached **Guilds/Channels/Members/Users/Roles** from anywhere
@@ -72,8 +73,8 @@ dotnet add package SimpleDiscordDotNet
 - **[Events](Events)** - Handling Discord gateway events
 
 ### Advanced Topics
+- **[Rate Limit Monitoring](Rate-Limit-Monitoring)** - Enterprise-grade rate limiting with monitoring
 - **[AOT & Trimming](AOT-and-Trimming)** - Native AOT compatibility
-- **[Examples](Examples)** - Complete bot examples
 - **[API Reference](API-Reference)** - Quick method reference
 - **[FAQ](FAQ)** - Common questions and troubleshooting
 

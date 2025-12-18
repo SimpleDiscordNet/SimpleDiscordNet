@@ -39,8 +39,8 @@
 ---
 
 ### Advanced
+- [Rate Limit Monitoring](Rate-Limit-Monitoring)
 - [AOT & Trimming](AOT-and-Trimming)
-- [Examples](Examples)
 - [API Reference](API-Reference)
 - [FAQ](FAQ)
 
