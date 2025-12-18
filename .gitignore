@@ -37,3 +37,6 @@ packages/
 # Rider caches
 .idea/.idea.Shelf/
 .idea/.idea.*.shelf/
+
+# Github Wiki Pages
+wiki/
