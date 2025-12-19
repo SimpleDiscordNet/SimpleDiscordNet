@@ -21,6 +21,13 @@ public sealed class InteractionContext
     public Author? User { get; }
     public InteractionType Type { get; }
 
+    /// <summary>
+    /// The shard ID that received this interaction (0-based).
+    /// Null if bot is not using sharding.
+    /// Example: int? shard = ctx.ShardId;
+    /// </summary>
+    public int? ShardId { get; internal set; }
+
     // Expose the raw event for maximum flexibility
     public InteractionCreateEvent Event => _evt;
 

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using SimpleDiscordNet.Entities;
 using SimpleDiscordNet.Models.Context;
+using SimpleDiscordNet.Sharding;
 
 namespace SimpleDiscordNet.Core;
 
@@ -84,6 +85,86 @@ internal sealed class EntityCache
         List<RoleWithGuild> list = new(1024);
         foreach ((string gid, Guild guild) in _guilds)
         {
+            if (guild.Roles == null) continue;
+            list.EnsureCapacity(list.Count + guild.Roles.Length);
+            foreach (var role in guild.Roles)
+            {
+                list.Add(new RoleWithGuild(role, guild));
+            }
+        }
+        return list;
+    }
+
+    // --- Shard-aware snapshot methods ---
+
+    /// <summary>
+    /// Returns guilds that belong to a specific shard.
+    /// Example: var guilds = cache.SnapshotGuildsForShard(0, 4);
+    /// </summary>
+    public IReadOnlyList<Guild> SnapshotGuildsForShard(int shardId, int totalShards)
+    {
+        return _guilds.Values
+            .Where(g => ShardCalculator.CalculateShardId(g.Id.AsSpan(), totalShards) == shardId)
+            .OrderBy(g => g.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Returns channels that belong to guilds in a specific shard.
+    /// Example: var channels = cache.SnapshotChannelsForShard(0, 4);
+    /// </summary>
+    public IReadOnlyList<ChannelWithGuild> SnapshotChannelsForShard(int shardId, int totalShards)
+    {
+        List<ChannelWithGuild> list = new(1024);
+        foreach ((string gid, Guild guild) in _guilds)
+        {
+            if (ShardCalculator.CalculateShardId(gid.AsSpan(), totalShards) != shardId)
+                continue;
+
+            if (!_channelsByGuild.TryGetValue(gid, out List<Channel>? chs)) continue;
+            list.EnsureCapacity(list.Count + chs.Count);
+            foreach (var c in chs)
+            {
+                list.Add(new ChannelWithGuild(c, guild));
+            }
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Returns members that belong to guilds in a specific shard.
+    /// Example: var members = cache.SnapshotMembersForShard(0, 4);
+    /// </summary>
+    public IReadOnlyList<MemberWithGuild> SnapshotMembersForShard(int shardId, int totalShards)
+    {
+        List<MemberWithGuild> list = new(2048);
+        foreach ((string gid, Guild guild) in _guilds)
+        {
+            if (ShardCalculator.CalculateShardId(gid.AsSpan(), totalShards) != shardId)
+                continue;
+
+            if (!_membersByGuild.TryGetValue(gid, out List<Member>? members)) continue;
+            list.EnsureCapacity(list.Count + members.Count);
+            foreach (var member in members)
+            {
+                list.Add(new MemberWithGuild(member, guild, member.User));
+            }
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Returns roles that belong to guilds in a specific shard.
+    /// Example: var roles = cache.SnapshotRolesForShard(0, 4);
+    /// </summary>
+    public IReadOnlyList<RoleWithGuild> SnapshotRolesForShard(int shardId, int totalShards)
+    {
+        List<RoleWithGuild> list = new(1024);
+        foreach ((string gid, Guild guild) in _guilds)
+        {
+            if (ShardCalculator.CalculateShardId(gid.AsSpan(), totalShards) != shardId)
+                continue;
+
             if (guild.Roles == null) continue;
             list.EnsureCapacity(list.Count + guild.Roles.Length);
             foreach (var role in guild.Roles)

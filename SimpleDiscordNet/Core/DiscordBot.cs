@@ -11,6 +11,7 @@ using SimpleDiscordNet.Models.Requests;
 using SimpleDiscordNet.Rest;
 using SimpleDiscordNet.Events;
 using SimpleDiscordNet.Primitives;
+using SimpleDiscordNet.Sharding;
 
 namespace SimpleDiscordNet;
 
@@ -24,7 +25,10 @@ public sealed class DiscordBot : IDiscordBot
     private readonly JsonSerializerOptions _json;
     private readonly NativeLogger _logger;
     private readonly RestClient _rest;
-    private readonly GatewayClient _gateway;
+    private readonly GatewayClient? _gateway; // For non-sharded mode
+    private readonly ShardManager? _shardManager; // For SingleProcess sharding
+    private readonly ShardCoordinator? _coordinator; // For Distributed coordinator
+    private readonly DistributedWorker? _worker; // For Distributed worker
     private readonly SlashCommandService _slashCommands;
     private readonly ComponentService _components;
     private readonly CancellationTokenSource _cts = new();
@@ -39,6 +43,13 @@ public sealed class DiscordBot : IDiscordBot
     private readonly string[] _developmentGuildIds;
 
     private readonly List<IGeneratedManifest> _generatedManifests = [];
+
+    private readonly ShardMode _shardMode;
+    private readonly int? _shardId;
+    private readonly int? _totalShards;
+    private readonly string? _coordinatorUrl;
+    private readonly string? _workerListenUrl;
+    private readonly string? _workerId;
 
     private volatile bool _started;
 
@@ -56,7 +67,14 @@ public sealed class DiscordBot : IDiscordBot
         bool preloadMembers,
         bool autoLoadFullGuildData,
         bool developmentMode,
-        IEnumerable<string>? developmentGuildIds)
+        IEnumerable<string>? developmentGuildIds,
+        ShardMode shardMode,
+        int? shardId,
+        int? totalShards,
+        string? coordinatorUrl,
+        string? workerListenUrl,
+        string? workerId,
+        bool isOriginalCoordinator)
     {
         _token = token;
         _intents = intents;
@@ -71,6 +89,12 @@ public sealed class DiscordBot : IDiscordBot
                                                   .Select(static s => s.Trim())
                                                   .Distinct(StringComparer.Ordinal)
                                                   .ToArray() ?? [];
+        _shardMode = shardMode;
+        _shardId = shardId;
+        _totalShards = totalShards;
+        _coordinatorUrl = coordinatorUrl;
+        _workerListenUrl = workerListenUrl;
+        _workerId = workerId;
 
         HttpClient httpClient = new(new SocketsHttpHandler
         {
@@ -85,7 +109,32 @@ public sealed class DiscordBot : IDiscordBot
 
         RateLimiter rateLimiter = new(timeProvider ?? TimeProvider.System);
         _rest = new RestClient(httpClient, token, json, logger, rateLimiter);
-        _gateway = new GatewayClient(token, intents, json);
+
+        // Initialize based on shard mode
+        switch (shardMode)
+        {
+            case ShardMode.SingleProcess when shardId.HasValue && totalShards.HasValue:
+                // Single process with explicit sharding
+                _shardManager = new ShardManager(token, intents, json, logger);
+                break;
+
+            case ShardMode.Distributed when isOriginalCoordinator:
+                // Distributed coordinator
+                _coordinator = new ShardCoordinator(token, workerListenUrl ?? "http://+:8080/", logger, isOriginalCoordinator: true);
+                break;
+
+            case ShardMode.Distributed:
+                // Distributed worker
+                workerId ??= $"{Environment.MachineName}-{Guid.NewGuid():N}";
+                _worker = new DistributedWorker(token, intents, json, logger, workerId, workerListenUrl ?? "http://+:8080/", coordinatorUrl ?? throw new ArgumentNullException(nameof(coordinatorUrl)));
+                break;
+
+            default:
+                // Default: Single gateway (no sharding)
+                _gateway = new GatewayClient(token, intents, json);
+                break;
+        }
+
         _slashCommands = new SlashCommandService(logger);
         _components = new ComponentService(logger);
 
@@ -142,7 +191,56 @@ public sealed class DiscordBot : IDiscordBot
             }
         }
 
-        await _gateway.ConnectAsync(cancellationToken).ConfigureAwait(false);
+        // Start appropriate component based on shard mode
+        switch (_shardMode)
+        {
+            case ShardMode.SingleProcess when _shardManager != null && _shardId.HasValue && _totalShards.HasValue:
+                // Start specific shard via ShardManager
+                var shard = await _shardManager.StartShardAsync(_shardId.Value, _totalShards.Value, cancellationToken).ConfigureAwait(false);
+                _shardManager.WireShardEvents(shard, OnConnected, OnDisconnected, OnError, null, OnInteractionCreate,
+                    OnGuildCreate, OnGuildUpdate, OnGuildDelete, OnGuildEmojisUpdate,
+                    OnChannelCreate, OnChannelUpdate, OnChannelDelete,
+                    OnGuildRoleCreate, OnGuildRoleUpdate, OnGuildRoleDelete,
+                    OnThreadCreate, OnThreadUpdate, OnThreadDelete,
+                    OnGuildMemberAdd, OnGuildMemberUpdate, OnGuildMemberRemove, OnGuildMembersChunk,
+                    OnGuildBanAdd, OnGuildBanRemove, OnUserUpdate,
+                    OnMessageUpdate, OnMessageDelete, OnMessageDeleteBulk,
+                    OnMessageReactionAdd, OnMessageReactionRemove, OnMessageReactionRemoveAll, OnMessageReactionRemoveEmoji);
+                break;
+
+            case ShardMode.Distributed when _coordinator != null:
+                // Start coordinator
+                await _coordinator.StartAsync(cancellationToken).ConfigureAwait(false);
+                break;
+
+            case ShardMode.Distributed when _worker != null:
+                // Start worker
+                await _worker.StartAsync(cancellationToken).ConfigureAwait(false);
+                // Wire events from worker's shards
+                foreach (var workerId in _worker.ShardManager.GetShardIds())
+                {
+                    var workerShard = _worker.ShardManager.GetShard(workerId);
+                    if (workerShard != null)
+                    {
+                        _worker.ShardManager.WireShardEvents(workerShard, OnConnected, OnDisconnected, OnError, null, OnInteractionCreate,
+                            OnGuildCreate, OnGuildUpdate, OnGuildDelete, OnGuildEmojisUpdate,
+                            OnChannelCreate, OnChannelUpdate, OnChannelDelete,
+                            OnGuildRoleCreate, OnGuildRoleUpdate, OnGuildRoleDelete,
+                            OnThreadCreate, OnThreadUpdate, OnThreadDelete,
+                            OnGuildMemberAdd, OnGuildMemberUpdate, OnGuildMemberRemove, OnGuildMembersChunk,
+                            OnGuildBanAdd, OnGuildBanRemove, OnUserUpdate,
+                            OnMessageUpdate, OnMessageDelete, OnMessageDeleteBulk,
+                            OnMessageReactionAdd, OnMessageReactionRemove, OnMessageReactionRemoveAll, OnMessageReactionRemoveEmoji);
+                    }
+                }
+                break;
+
+            default:
+                // Start single gateway
+                if (_gateway != null)
+                    await _gateway.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                break;
+        }
     }
 
     /// <summary>
@@ -160,7 +258,19 @@ public sealed class DiscordBot : IDiscordBot
     {
         try
         {
-            await _gateway.DisconnectAsync().ConfigureAwait(false);
+            await _cts.CancelAsync();
+
+            if (_gateway != null)
+                await _gateway.DisconnectAsync().ConfigureAwait(false);
+
+            if (_shardManager != null)
+                _shardManager.Dispose();
+
+            if (_coordinator != null)
+                await _coordinator.StopAsync().ConfigureAwait(false);
+
+            if (_worker != null)
+                await _worker.StopAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -703,6 +813,11 @@ public sealed class DiscordBot : IDiscordBot
         }
     }
 
+    // Event handler methods for gateway events
+    private void OnConnected(object? sender, EventArgs e) => DiscordEvents.RaiseConnected(this);
+    private void OnDisconnected(object? sender, Exception? ex) => DiscordEvents.RaiseDisconnected(this, ex);
+    private void OnError(object? sender, Exception ex) => DiscordEvents.RaiseError(this, ex);
+
     private void OnInteractionCreate(object? sender, InteractionCreateEvent e)
     {
         switch (e)
@@ -716,16 +831,225 @@ public sealed class DiscordBot : IDiscordBot
         }
     }
 
+    private void OnGuildCreate(object? sender, GuildCreateEvent evt)
+    {
+        _cache.UpsertGuild(evt.Guild);
+
+        // Cache channels from GUILD_CREATE
+        if (evt.Channels is not null && evt.Channels.Length > 0)
+        {
+            _cache.SetChannels(evt.Guild.Id, evt.Channels);
+        }
+
+        // Cache members from GUILD_CREATE (partial list)
+        if (evt.Members is not null && evt.Members.Length > 0)
+        {
+            _cache.SetMembers(evt.Guild.Id, evt.Members);
+        }
+
+        // Cache threads from GUILD_CREATE (threads are channels)
+        if (evt.Threads is not null && evt.Threads.Length > 0)
+        {
+            foreach (Channel thread in evt.Threads)
+            {
+                _cache.UpsertChannel(evt.Guild.Id, thread);
+            }
+        }
+
+        DiscordEvents.RaiseGuildAdded(this, new GuildEvent { Guild = evt.Guild });
+
+        // Auto-load complete guild data if enabled
+        if (_autoLoadFullGuildData)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await LoadCompleteGuildDataAsync(evt.Guild.Id, evt.Channels, evt.Members);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Log(LogLevel.Warning, $"Failed to load complete guild data for {evt.Guild.Id}: {ex.Message}");
+                }
+            });
+        }
+    }
+
+    private void OnGuildUpdate(object? sender, Guild g)
+    {
+        _cache.UpsertGuild(g);
+        DiscordEvents.RaiseGuildUpdated(this, new GuildEvent { Guild = g });
+    }
+
+    private void OnGuildDelete(object? sender, string gid)
+    {
+        _cache.RemoveGuild(gid);
+        DiscordEvents.RaiseGuildRemoved(this, gid);
+    }
+
+    private void OnGuildEmojisUpdate(object? sender, GuildEmojisUpdateEvent e)
+    {
+        _cache.SetEmojis(e.GuildId, e.Emojis);
+    }
+
+    private void OnChannelCreate(object? sender, Channel ch)
+    {
+        string? gid = ch.Guild_Id;
+        if (gid is null)
+        {
+            _logger.Log(LogLevel.Information, $"DM channel created (id={ch.Id}, type={ch.Type}).");
+            return; // do not cache DM channels
+        }
+        _cache.UpsertChannel(gid, ch);
+        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordEvents.RaiseChannelCreated(this, new ChannelEvent { Channel = ch, Guild = guild });
+    }
+
+    private void OnChannelUpdate(object? sender, Channel ch)
+    {
+        string? gid = ch.Guild_Id;
+        if (gid is null)
+        {
+            _logger.Log(LogLevel.Information, $"DM channel updated (id={ch.Id}, type={ch.Type}).");
+            return;
+        }
+        _cache.UpsertChannel(gid, ch);
+        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordEvents.RaiseChannelUpdated(this, new ChannelEvent { Channel = ch, Guild = guild });
+    }
+
+    private void OnChannelDelete(object? sender, Channel ch)
+    {
+        string? gid = ch.Guild_Id;
+        if (gid is null)
+        {
+            _logger.Log(LogLevel.Information, $"DM channel deleted (id={ch.Id}, type={ch.Type}).");
+            return;
+        }
+        _cache.RemoveChannel(gid, ch.Id);
+        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordEvents.RaiseChannelDeleted(this, new ChannelEvent { Channel = ch, Guild = guild });
+    }
+
+    private void OnGuildRoleCreate(object? sender, GatewayRoleEvent e)
+    {
+        _cache.UpsertRole(e.GuildId, e.Role);
+        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordEvents.RaiseRoleCreated(this, new RoleEvent { Role = e.Role, Guild = guild });
+    }
+
+    private void OnGuildRoleUpdate(object? sender, GatewayRoleEvent e)
+    {
+        _cache.UpsertRole(e.GuildId, e.Role);
+        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordEvents.RaiseRoleUpdated(this, new RoleEvent { Role = e.Role, Guild = guild });
+    }
+
+    private void OnGuildRoleDelete(object? sender, GatewayRoleEvent e)
+    {
+        _cache.RemoveRole(e.GuildId, e.Role.Id);
+        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordEvents.RaiseRoleDeleted(this, new RoleEvent { Role = e.Role, Guild = guild });
+    }
+
+    private void OnThreadCreate(object? sender, Channel thread)
+    {
+        string? gid = thread.Guild_Id;
+        if (gid is null) return;
+        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordEvents.RaiseThreadCreated(this, new ThreadEvent { Thread = thread, Guild = guild });
+    }
+
+    private void OnThreadUpdate(object? sender, Channel thread)
+    {
+        string? gid = thread.Guild_Id;
+        if (gid is null) return;
+        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordEvents.RaiseThreadUpdated(this, new ThreadEvent { Thread = thread, Guild = guild });
+    }
+
+    private void OnThreadDelete(object? sender, Channel thread)
+    {
+        string? gid = thread.Guild_Id;
+        if (gid is null) return;
+        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordEvents.RaiseThreadDeleted(this, new ThreadEvent { Thread = thread, Guild = guild });
+    }
+
+    private void OnGuildMemberAdd(object? sender, GatewayMemberEvent e)
+    {
+        _cache.UpsertMember(e.GuildId, e.Member);
+        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordEvents.RaiseMemberJoined(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
+    }
+
+    private void OnGuildMemberUpdate(object? sender, GatewayMemberEvent e)
+    {
+        _cache.UpsertMember(e.GuildId, e.Member);
+        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordEvents.RaiseMemberUpdated(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
+    }
+
+    private void OnGuildMemberRemove(object? sender, GatewayMemberEvent e)
+    {
+        _cache.RemoveMember(e.GuildId, e.Member.User.Id);
+        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordEvents.RaiseMemberLeft(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
+    }
+
+    private void OnGuildMembersChunk(object? sender, GuildMembersChunkEvent e)
+    {
+        // Accumulate members from all chunks
+        foreach (Member member in e.Members)
+        {
+            _cache.UpsertMember(e.GuildId, member);
+        }
+
+        _logger.Log(LogLevel.Debug, $"Received member chunk {e.ChunkIndex + 1}/{e.ChunkCount} for guild {e.GuildId} ({e.Members.Length} members)");
+
+        // Check if this was the last chunk
+        if (e.ChunkIndex == e.ChunkCount - 1 && _pendingMemberChunks.TryRemove(e.GuildId, out int _) && _cache.TryGetGuild(e.GuildId, out Guild guild))
+        {
+            _logger.Log(LogLevel.Information, $"Guild {guild.Name} ({e.GuildId}) is fully loaded");
+            DiscordEvents.RaiseGuildReady(this, new GuildEvent { Guild = guild });
+        }
+    }
+
+    private void OnGuildBanAdd(object? sender, GatewayUserEvent e)
+    {
+        _cache.RemoveMember(e.GuildId, e.User.Id);
+        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordEvents.RaiseBanAdded(this, new BanEvent { User = e.User, Guild = guild, Member = null });
+    }
+
+    private void OnGuildBanRemove(object? sender, GatewayUserEvent e)
+    {
+        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordEvents.RaiseBanRemoved(this, new BanEvent { User = e.User, Guild = guild, Member = null });
+    }
+
+    private void OnUserUpdate(object? sender, User u) => DiscordEvents.RaiseBotUserUpdated(this, new BotUserEvent { User = u });
+    private void OnMessageUpdate(object? sender, MessageUpdateEvent e) => DiscordEvents.RaiseMessageUpdated(this, e);
+    private void OnMessageDelete(object? sender, MessageEvent e) => DiscordEvents.RaiseMessageDeleted(this, e);
+    private void OnMessageDeleteBulk(object? sender, MessageEvent e) => DiscordEvents.RaiseMessagesBulkDeleted(this, e);
+    private void OnMessageReactionAdd(object? sender, ReactionEvent e) => DiscordEvents.RaiseReactionAdded(this, e);
+    private void OnMessageReactionRemove(object? sender, ReactionEvent e) => DiscordEvents.RaiseReactionRemoved(this, e);
+    private void OnMessageReactionRemoveAll(object? sender, MessageEvent e) => DiscordEvents.RaiseReactionsCleared(this, e);
+    private void OnMessageReactionRemoveEmoji(object? sender, ReactionEvent e) => DiscordEvents.RaiseReactionsClearedForEmoji(this, e);
+
     private void WireGatewayEvents()
     {
         // Forward logger to static event hub
         _logger.Logged += (_, msg) => DiscordEvents.RaiseLog(this, msg);
 
+        // Only wire single gateway (sharded gateways are wired in StartAsync)
+        if (_gateway == null) return;
+
         // Basic lifecycle and message routing
-        _gateway.Connected += (_, __) => DiscordEvents.RaiseConnected(this);
-        _gateway.Disconnected += (_, ex) => DiscordEvents.RaiseDisconnected(this, ex);
-        _gateway.Error += (_, ex) => DiscordEvents.RaiseError(this, ex);
-        
+        _gateway.Connected += OnConnected;
+        _gateway.Disconnected += OnDisconnected;
+        _gateway.Error += OnError;
+
         // Direct messages
         _gateway.MessageCreate += (_, msg) =>
         {
@@ -736,215 +1060,54 @@ public sealed class DiscordBot : IDiscordBot
                 DiscordEvents.RaiseDirectMessageReceived(this, new DirectMessageEvent { Message = msg, Context = ctx });
             }
         };
-        
+
         // Slash interactions
         _gateway.InteractionCreate += OnInteractionCreate;
 
         // Guild events
-        _gateway.GuildCreate += (_, evt) =>
-        {
-            _cache.UpsertGuild(evt.Guild);
-
-            // Cache channels from GUILD_CREATE
-            if (evt.Channels is not null && evt.Channels.Length > 0)
-            {
-                _cache.SetChannels(evt.Guild.Id, evt.Channels);
-            }
-
-            // Cache members from GUILD_CREATE (partial list)
-            if (evt.Members is not null && evt.Members.Length > 0)
-            {
-                _cache.SetMembers(evt.Guild.Id, evt.Members);
-            }
-
-            // Cache threads from GUILD_CREATE (threads are channels)
-            if (evt.Threads is not null && evt.Threads.Length > 0)
-            {
-                foreach (Channel thread in evt.Threads)
-                {
-                    _cache.UpsertChannel(evt.Guild.Id, thread);
-                }
-            }
-
-            DiscordEvents.RaiseGuildAdded(this, new GuildEvent { Guild = evt.Guild });
-
-            // Auto-load complete guild data if enabled
-            if (_autoLoadFullGuildData)
-            {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await LoadCompleteGuildDataAsync(evt.Guild.Id, evt.Channels, evt.Members);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Log(LogLevel.Warning, $"Failed to load complete guild data for {evt.Guild.Id}: {ex.Message}");
-                    }
-                });
-            }
-        };
-        _gateway.GuildUpdate += (_, g) =>
-        {
-            _cache.UpsertGuild(g);
-            DiscordEvents.RaiseGuildUpdated(this, new GuildEvent { Guild = g });
-        };
-        _gateway.GuildDelete += (_, gid) =>
-        {
-            _cache.RemoveGuild(gid);
-            DiscordEvents.RaiseGuildRemoved(this, gid);
-        };
-        _gateway.GuildEmojisUpdate += (_, e) =>
-        {
-            _cache.SetEmojis(e.GuildId, e.Emojis);
-        };
+        _gateway.GuildCreate += OnGuildCreate;
+        _gateway.GuildUpdate += OnGuildUpdate;
+        _gateway.GuildDelete += OnGuildDelete;
+        _gateway.GuildEmojisUpdate += OnGuildEmojisUpdate;
 
         // Channel events
-        _gateway.ChannelCreate += (_, ch) =>
-        {
-            string? gid = ch.Guild_Id;
-            if (gid is null)
-            {
-                _logger.Log(LogLevel.Information, $"DM channel created (id={ch.Id}, type={ch.Type}).");
-                return; // do not cache DM channels
-            }
-            _cache.UpsertChannel(gid, ch);
-            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
-            DiscordEvents.RaiseChannelCreated(this, new ChannelEvent { Channel = ch, Guild = guild });
-        };
-        _gateway.ChannelUpdate += (_, ch) =>
-        {
-            string? gid = ch.Guild_Id;
-            if (gid is null)
-            {
-                _logger.Log(LogLevel.Information, $"DM channel updated (id={ch.Id}, type={ch.Type}).");
-                return;
-            }
-            _cache.UpsertChannel(gid, ch);
-            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
-            DiscordEvents.RaiseChannelUpdated(this, new ChannelEvent { Channel = ch, Guild = guild });
-        };
-        _gateway.ChannelDelete += (_, ch) =>
-        {
-            string? gid = ch.Guild_Id;
-            if (gid is null)
-            {
-                _logger.Log(LogLevel.Information, $"DM channel deleted (id={ch.Id}, type={ch.Type}).");
-                return;
-            }
-            _cache.RemoveChannel(gid, ch.Id);
-            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
-            DiscordEvents.RaiseChannelDeleted(this, new ChannelEvent { Channel = ch, Guild = guild });
-        };
+        _gateway.ChannelCreate += OnChannelCreate;
+        _gateway.ChannelUpdate += OnChannelUpdate;
+        _gateway.ChannelDelete += OnChannelDelete;
 
         // Role events
-        _gateway.GuildRoleCreate += (_, e) =>
-        {
-            _cache.UpsertRole(e.GuildId, e.Role);
-            Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
-            DiscordEvents.RaiseRoleCreated(this, new RoleEvent { Role = e.Role, Guild = guild });
-        };
-        _gateway.GuildRoleUpdate += (_, e) =>
-        {
-            _cache.UpsertRole(e.GuildId, e.Role);
-            Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
-            DiscordEvents.RaiseRoleUpdated(this, new RoleEvent { Role = e.Role, Guild = guild });
-        };
-        _gateway.GuildRoleDelete += (_, e) =>
-        {
-            _cache.RemoveRole(e.GuildId, e.Role.Id);
-            Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
-            DiscordEvents.RaiseRoleDeleted(this, new RoleEvent { Role = e.Role, Guild = guild });
-        };
+        _gateway.GuildRoleCreate += OnGuildRoleCreate;
+        _gateway.GuildRoleUpdate += OnGuildRoleUpdate;
+        _gateway.GuildRoleDelete += OnGuildRoleDelete;
 
         // Thread events
-        _gateway.ThreadCreate += (_, thread) =>
-        {
-            string? gid = thread.Guild_Id;
-            if (gid is null) return;
-            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
-            DiscordEvents.RaiseThreadCreated(this, new ThreadEvent { Thread = thread, Guild = guild });
-        };
-        _gateway.ThreadUpdate += (_, thread) =>
-        {
-            string? gid = thread.Guild_Id;
-            if (gid is null) return;
-            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
-            DiscordEvents.RaiseThreadUpdated(this, new ThreadEvent { Thread = thread, Guild = guild });
-        };
-        _gateway.ThreadDelete += (_, thread) =>
-        {
-            string? gid = thread.Guild_Id;
-            if (gid is null) return;
-            Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
-            DiscordEvents.RaiseThreadDeleted(this, new ThreadEvent { Thread = thread, Guild = guild });
-        };
+        _gateway.ThreadCreate += OnThreadCreate;
+        _gateway.ThreadUpdate += OnThreadUpdate;
+        _gateway.ThreadDelete += OnThreadDelete;
 
         // Member events
-        _gateway.GuildMemberAdd += (_, e) =>
-        {
-            _cache.UpsertMember(e.GuildId, e.Member);
-            Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
-            DiscordEvents.RaiseMemberJoined(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
-        };
-        _gateway.GuildMemberUpdate += (_, e) =>
-        {
-            _cache.UpsertMember(e.GuildId, e.Member);
-            Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
-            DiscordEvents.RaiseMemberUpdated(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
-        };
-        _gateway.GuildMemberRemove += (_, e) =>
-        {
-            _cache.RemoveMember(e.GuildId, e.Member.User.Id);
-            Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
-            DiscordEvents.RaiseMemberLeft(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
-        };
-        _gateway.GuildMembersChunk += (_, e) =>
-        {
-            // Accumulate members from all chunks
-            // Note: Discord may send multiple chunks for large guilds
-            foreach (Member member in e.Members)
-            {
-                _cache.UpsertMember(e.GuildId, member);
-            }
-
-            _logger.Log(LogLevel.Debug, $"Received member chunk {e.ChunkIndex + 1}/{e.ChunkCount} for guild {e.GuildId} ({e.Members.Length} members)");
-
-            // Check if this was the last chunk
-            if (e.ChunkIndex == e.ChunkCount - 1 && _pendingMemberChunks.TryRemove(e.GuildId, out int _) && _cache.TryGetGuild(e.GuildId, out Guild guild))
-            {
-                // All member chunks received, mark guild as ready
-                _logger.Log(LogLevel.Information, $"Guild {guild.Name} ({e.GuildId}) is fully loaded");
-                DiscordEvents.RaiseGuildReady(this, new GuildEvent { Guild = guild });
-            }
-        };
+        _gateway.GuildMemberAdd += OnGuildMemberAdd;
+        _gateway.GuildMemberUpdate += OnGuildMemberUpdate;
+        _gateway.GuildMemberRemove += OnGuildMemberRemove;
+        _gateway.GuildMembersChunk += OnGuildMembersChunk;
 
         // Ban events
-        _gateway.GuildBanAdd += (_, e) =>
-        {
-            _cache.RemoveMember(e.GuildId, e.User.Id);
-            Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
-            DiscordEvents.RaiseBanAdded(this, new BanEvent { User = e.User, Guild = guild, Member = null });
-        };
-        _gateway.GuildBanRemove += (_, e) =>
-        {
-            Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
-            DiscordEvents.RaiseBanRemoved(this, new BanEvent { User = e.User, Guild = guild, Member = null });
-        };
+        _gateway.GuildBanAdd += OnGuildBanAdd;
+        _gateway.GuildBanRemove += OnGuildBanRemove;
 
         // Bot user change
-        _gateway.UserUpdate += (_, u) => DiscordEvents.RaiseBotUserUpdated(this, new BotUserEvent { User = u });
+        _gateway.UserUpdate += OnUserUpdate;
 
         // Message events
-        _gateway.MessageUpdate += (_, e) => DiscordEvents.RaiseMessageUpdated(this, e);
-        _gateway.MessageDelete += (_, e) => DiscordEvents.RaiseMessageDeleted(this, e);
-        _gateway.MessageDeleteBulk += (_, e) => DiscordEvents.RaiseMessagesBulkDeleted(this, e);
+        _gateway.MessageUpdate += OnMessageUpdate;
+        _gateway.MessageDelete += OnMessageDelete;
+        _gateway.MessageDeleteBulk += OnMessageDeleteBulk;
 
         // Reaction events
-        _gateway.MessageReactionAdd += (_, e) => DiscordEvents.RaiseReactionAdded(this, e);
-        _gateway.MessageReactionRemove += (_, e) => DiscordEvents.RaiseReactionRemoved(this, e);
-        _gateway.MessageReactionRemoveAll += (_, e) => DiscordEvents.RaiseReactionsCleared(this, e);
-        _gateway.MessageReactionRemoveEmoji += (_, e) => DiscordEvents.RaiseReactionsClearedForEmoji(this, e);
+        _gateway.MessageReactionAdd += OnMessageReactionAdd;
+        _gateway.MessageReactionRemove += OnMessageReactionRemove;
+        _gateway.MessageReactionRemoveAll += OnMessageReactionRemoveAll;
+        _gateway.MessageReactionRemoveEmoji += OnMessageReactionRemoveEmoji;
     }
 
     /// <summary>
@@ -953,7 +1116,10 @@ public sealed class DiscordBot : IDiscordBot
     public ValueTask DisposeAsync()
     {
         _cts.Cancel();
-        _gateway.Dispose();
+        _gateway?.Dispose();
+        _shardManager?.Dispose();
+        _coordinator?.Dispose();
+        _worker?.Dispose();
         _rest.Dispose();
         _cts.Dispose();
         DiscordContext.ClearProvider();
@@ -993,7 +1159,14 @@ public sealed class DiscordBot : IDiscordBot
             options.PreloadMembers,
             options.AutoLoadFullGuildData,
             options.DevelopmentMode,
-            options.DevelopmentGuildIds);
+            options.DevelopmentGuildIds,
+            options.ShardMode,
+            options.ShardId,
+            options.TotalShards,
+            options.CoordinatorUrl,
+            options.WorkerListenUrl,
+            options.WorkerId,
+            options.IsOriginalCoordinator);
 
         return bot;
     }
@@ -1017,6 +1190,13 @@ public sealed class DiscordBot : IDiscordBot
         private bool _autoLoadFullGuildData = true; // Default enabled
         private bool _developmentMode;
         private readonly List<string> _developmentGuildIds = [];
+        private ShardMode _shardMode = ShardMode.SingleProcess;
+        private int? _shardId;
+        private int? _totalShards;
+        private string? _coordinatorUrl;
+        private string? _workerListenUrl;
+        private string? _workerId;
+        private bool _isOriginalCoordinator;
 
         /// <summary>
         /// Sets the bot token used for authentication.
@@ -1118,6 +1298,52 @@ public sealed class DiscordBot : IDiscordBot
         }
 
         /// <summary>
+        /// Configures single-process sharding with explicit shard ID and total.
+        /// Example: builder.WithSharding(shardId: 0, totalShards: 4)
+        /// </summary>
+        public Builder WithSharding(int shardId, int totalShards)
+        {
+            if (shardId < 0) throw new ArgumentOutOfRangeException(nameof(shardId));
+            if (totalShards < 1) throw new ArgumentOutOfRangeException(nameof(totalShards));
+            if (shardId >= totalShards) throw new ArgumentException($"ShardId {shardId} must be less than TotalShards {totalShards}");
+
+            _shardMode = ShardMode.SingleProcess;
+            _shardId = shardId;
+            _totalShards = totalShards;
+            return this;
+        }
+
+        /// <summary>
+        /// Configures distributed sharding as a coordinator.
+        /// Example: builder.WithDistributedCoordinator(listenUrl: "http://+:8080/", isOriginal: true)
+        /// </summary>
+        public Builder WithDistributedCoordinator(string listenUrl, bool isOriginalCoordinator = true)
+        {
+            if (string.IsNullOrWhiteSpace(listenUrl)) throw new ArgumentNullException(nameof(listenUrl));
+
+            _shardMode = ShardMode.Distributed;
+            _workerListenUrl = listenUrl;
+            _isOriginalCoordinator = isOriginalCoordinator;
+            return this;
+        }
+
+        /// <summary>
+        /// Configures distributed sharding as a worker node.
+        /// Example: builder.WithDistributedWorker(coordinatorUrl: "http://192.168.1.100:8080/", listenUrl: "http://+:8080/", workerId: "worker-1")
+        /// </summary>
+        public Builder WithDistributedWorker(string coordinatorUrl, string listenUrl, string? workerId = null)
+        {
+            if (string.IsNullOrWhiteSpace(coordinatorUrl)) throw new ArgumentNullException(nameof(coordinatorUrl));
+            if (string.IsNullOrWhiteSpace(listenUrl)) throw new ArgumentNullException(nameof(listenUrl));
+
+            _shardMode = ShardMode.Distributed;
+            _coordinatorUrl = coordinatorUrl;
+            _workerListenUrl = listenUrl;
+            _workerId = workerId ?? $"{Environment.MachineName}-{Guid.NewGuid():N}";
+            return this;
+        }
+
+        /// <summary>
         /// Builds a configured <see cref="DiscordBot"/> instance.
         /// </summary>
         public DiscordBot Build()
@@ -1125,7 +1351,8 @@ public sealed class DiscordBot : IDiscordBot
             if (string.IsNullOrWhiteSpace(_token))
                 throw new InvalidOperationException("Token is required");
 
-            DiscordBot bot = new(_token!, _intents, _json, _logger, _timeProvider, _preloadGuilds, _preloadChannels, _preloadMembers, _autoLoadFullGuildData, _developmentMode, _developmentGuildIds);
+            DiscordBot bot = new(_token!, _intents, _json, _logger, _timeProvider, _preloadGuilds, _preloadChannels, _preloadMembers, _autoLoadFullGuildData, _developmentMode, _developmentGuildIds,
+                _shardMode, _shardId, _totalShards, _coordinatorUrl, _workerListenUrl, _workerId, _isOriginalCoordinator);
 
             // Auto-register any manifests provided by source-generated initializers
             foreach (IGeneratedManifestProvider provider in GeneratedRegistry.Providers)
@@ -1235,7 +1462,7 @@ public sealed class DiscordBot : IDiscordBot
             {
                 // Register that we're waiting for member chunks
                 _pendingMemberChunks.TryAdd(guildId, 1);
-                await _gateway.RequestGuildMembersAsync(guildId);
+                await _gateway!.RequestGuildMembersAsync(guildId);
                 needsMembers = true;
             }
             catch (Exception ex)

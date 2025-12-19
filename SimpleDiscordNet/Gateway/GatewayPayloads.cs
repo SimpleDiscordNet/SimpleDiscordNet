@@ -14,6 +14,7 @@ internal sealed class IdentifyPayload
     public string token { get; set; } = string.Empty;
     public IdentifyConnectionProperties properties { get; set; } = new();
     public int intents { get; set; }
+    public int[]? shard { get; set; }
 }
 
 internal sealed class IdentifyConnectionProperties

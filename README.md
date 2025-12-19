@@ -21,6 +21,7 @@ SimpleDiscordDotNet is designed for developers who want:
 - ✅ Full Discord API v10 support (messages, reactions, permissions, roles, channels, threads, etc.)
 - ✅ Native AOT and trimming compatible
 - ✅ Memory-optimized with `Span<T>`, `Memory<T>`, and zero-allocation APIs
+- ✅ **Horizontal sharding** - 3 modes: single process, multi-shard, or distributed coordinator/worker
 
 ## Quick Example
 
@@ -47,16 +48,17 @@ await Task.Delay(Timeout.Infinite);
 
 ## Documentation
 
-**📖 Full documentation is available in the [Wiki](https://github.com/YourUsername/SimpleDiscordDotNet/wiki)**
+**📖 Full documentation is available in the [Wiki](./wiki)**
 
-- [Installation](https://github.com/YourUsername/SimpleDiscordDotNet/wiki/Installation) - Get started with NuGet or source reference
-- [Getting Started](https://github.com/YourUsername/SimpleDiscordDotNet/wiki/Getting-Started) - Your first bot in minutes
-- [Configuration](https://github.com/YourUsername/SimpleDiscordDotNet/wiki/Configuration) - Builder patterns, DI, intents
-- [Commands](https://github.com/YourUsername/SimpleDiscordDotNet/wiki/Commands) - Slash commands, components, modals
-- [Events](https://github.com/YourUsername/SimpleDiscordDotNet/wiki/Events) - Gateway events and logging
-- [API Reference](https://github.com/YourUsername/SimpleDiscordDotNet/wiki/API-Reference) - Complete API documentation
-- [Rate Limit Monitoring](https://github.com/YourUsername/SimpleDiscordDotNet/wiki/Rate-Limit-Monitoring) - Advanced monitoring and analytics
-- [FAQ](https://github.com/YourUsername/SimpleDiscordDotNet/wiki/FAQ) - Common questions and troubleshooting
+- [Installation](./wiki/Installation.md) - Get started with NuGet or source reference
+- [Getting Started](./wiki/Getting-Started.md) - Your first bot in minutes
+- [Configuration](./wiki/Configuration.md) - Builder patterns, DI, intents
+- [Commands](./wiki/Commands.md) - Slash commands, components, modals
+- [Events](./wiki/Events.md) - Gateway events and logging
+- [Sharding](./wiki/Sharding.md) - **NEW!** Horizontal scaling with distributed sharding
+- [API Reference](./wiki/API-Reference.md) - Complete API documentation
+- [Rate Limit Monitoring](./wiki/Rate-Limit-Monitoring.md) - Advanced monitoring and analytics
+- [FAQ](./wiki/FAQ.md) - Common questions and troubleshooting
 
 ## Installation
 
@@ -88,4 +90,16 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTI
 
 ---
 
-**Ready to build your Discord bot?** Head to the [Wiki](https://github.com/YourUsername/SimpleDiscordDotNet/wiki) to get started!
+**Ready to build your Discord bot?** Head to the [Wiki](./wiki) to get started!
+
+## Version History
+
+### v1.2.1 - Sharding Support (2025-12-19)
+- ✅ Added 3-mode sharding system: single process, multi-shard, distributed
+- ✅ Distributed coordinator/worker architecture with auto-discovery
+- ✅ Health monitoring, load balancing, coordinator succession
+- ✅ Cross-shard entity cache queries
+- ✅ Shard-aware InteractionContext for commands
+- ✅ Full AoT compliance with source-generated JSON serialization
+- ✅ Zero reflection usage, ready for native compilation
+- 📖 See [SHARDING_IMPLEMENTATION.md](SHARDING_IMPLEMENTATION.md) and [SHARDING_INTEGRATION_GUIDE.md](SHARDING_INTEGRATION_GUIDE.md)

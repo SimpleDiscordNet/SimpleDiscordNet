@@ -409,9 +409,62 @@ Create an issue on GitHub with:
 
 Yes! Contributions are welcome. Check the repository for contribution guidelines.
 
+## Sharding
+
+### When should I use sharding?
+
+- **< 2,500 guilds**: No sharding needed (SingleProcess mode)
+- **2,500-10,000 guilds**: Use SingleProcess with sharding (manual)
+- **10,000+ guilds**: Use Distributed mode (coordinator + workers)
+
+Discord **requires** sharding at 2,500 guilds.
+
+### How do I enable sharding?
+
+**SingleProcess with Sharding**:
+```csharp
+var bot = new DiscordBot.Builder(token, intents)
+    .WithSharding(shardId: 0, totalShards: 4)
+    .Build();
+```
+
+**Distributed Mode**:
+```csharp
+// Coordinator
+var coordinator = new DiscordBot.Builder(token, intents)
+    .WithDistributedCoordinator("http://+:8080/", isOriginalCoordinator: true)
+    .Build();
+
+// Worker
+var worker = new DiscordBot.Builder(token, intents)
+    .WithDistributedWorker("http://coordinator:8080/", "http://+:8081/", "worker-1")
+    .Build();
+```
+
+See [Sharding](Sharding.md) for complete guide.
+
+### How do I access shard information in commands?
+
+```csharp
+[SlashCommand("info", "Get shard info")]
+public async Task InfoAsync(InteractionContext ctx)
+{
+    var shardId = ctx.ShardId;
+    await ctx.RespondAsync($"Shard {shardId}");
+}
+```
+
+### Can I query data across all shards?
+
+Yes! In distributed mode:
+```csharp
+var allGuilds = await bot.Cache.GetGuildsAsync(); // Queries all workers
+```
+
 ## Next Steps
 
 - [Getting Started](Getting-Started.md) - Build your first bot
 - [Commands](Commands.md) - Create slash commands
+- [Sharding](Sharding.md) - Scale horizontally with sharding
 - [Events](Events.md) - Handle Discord events
 - [API Reference](API-Reference.md) - Full API documentation

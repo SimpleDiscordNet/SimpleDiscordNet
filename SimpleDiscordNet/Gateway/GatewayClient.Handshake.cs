@@ -13,7 +13,8 @@ internal sealed partial class GatewayClient
             {
                 token = token,
                 intents = (int)intents,
-                properties = new IdentifyConnectionProperties()
+                properties = new IdentifyConnectionProperties(),
+                shard = ShardId.HasValue && TotalShards.HasValue ? [ShardId.Value, TotalShards.Value] : null
             }
         };
         var buffer = new System.Buffers.ArrayBufferWriter<byte>();

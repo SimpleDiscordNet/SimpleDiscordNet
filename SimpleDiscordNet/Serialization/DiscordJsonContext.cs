@@ -5,6 +5,7 @@ using SimpleDiscordNet.Models;
 using SimpleDiscordNet.Models.Context;
 using SimpleDiscordNet.Models.Requests;
 using SimpleDiscordNet.Primitives;
+using SimpleDiscordNet.Sharding.Models;
 
 namespace SimpleDiscordNet.Serialization;
 
@@ -60,5 +61,28 @@ namespace SimpleDiscordNet.Serialization;
 [JsonSerializable(typeof(ResumePayload))]
 [JsonSerializable(typeof(RequestGuildMembers))]
 [JsonSerializable(typeof(RequestGuildMembersPayload))]
+// Sharding models
+[JsonSerializable(typeof(WorkerRegistrationRequest))]
+[JsonSerializable(typeof(WorkerRegistrationResponse))]
+[JsonSerializable(typeof(SuccessionEntry))]
+[JsonSerializable(typeof(WorkerCapabilities))]
+[JsonSerializable(typeof(WorkerMetrics))]
+[JsonSerializable(typeof(ShardMetrics))]
+[JsonSerializable(typeof(HealthCheckResponse))]
+[JsonSerializable(typeof(ShardAssignment))]
+[JsonSerializable(typeof(SuccessionUpdate))]
+[JsonSerializable(typeof(ShardMigrationRequest))]
+[JsonSerializable(typeof(PeerNodeState))]
+[JsonSerializable(typeof(ClusterState))]
+[JsonSerializable(typeof(CoordinatorResumptionRequest))]
+[JsonSerializable(typeof(CoordinatorHandoffData))]
+[JsonSerializable(typeof(CoordinatorResumedAnnouncement))]
+// Sharding model arrays/lists
+[JsonSerializable(typeof(List<SuccessionEntry>))]
+[JsonSerializable(typeof(List<int>))]
+[JsonSerializable(typeof(List<string>))]
+[JsonSerializable(typeof(List<ShardMetrics>))]
+[JsonSerializable(typeof(List<PeerNodeState>))]
+[JsonSerializable(typeof(Dictionary<int, string>))]
 
 internal partial class DiscordJsonContext : JsonSerializerContext;

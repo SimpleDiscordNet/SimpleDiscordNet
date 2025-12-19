@@ -29,6 +29,7 @@ dotnet add package SimpleDiscordDotNet
 - **Source generator** for zero-reflection command/component discovery
 - **Native AOT compatible** - Full trimming and AOT support
 - **Memory-optimized** - Span<T> and Memory<T> APIs for 30-50% less GC pressure
+- **🆕 Horizontal sharding** - 3 modes: single process, multi-shard, or distributed coordinator/worker
 
 ### Rich Discord API v10 Support
 - **Messages:** send, edit, delete, bulk delete, pin/unpin
@@ -40,7 +41,7 @@ dotnet add package SimpleDiscordDotNet
 - **Threads:** create, join, leave, add/remove members
 - **Moderation:** kick, ban, unban, role assignment
 - **Events:** comprehensive gateway events for all entity changes
-- **Rate Limiting:** enterprise-grade with bucket tracking, monitoring, and zero message loss
+- **Rate Limiting:** advanced bucket tracking, monitoring, and zero message loss
 
 ### Ambient DiscordContext
 - Access cached **Guilds/Channels/Members/Users/Roles** from anywhere
@@ -75,8 +76,9 @@ dotnet add package SimpleDiscordDotNet
 - **[Events](Events)** - Handling Discord gateway events
 
 ### Advanced Topics
-- **[Rate Limit Monitoring](Rate-Limit-Monitoring)** - Enterprise-grade rate limiting with monitoring
-- **[AOT & Trimming](AOT-and-Trimming)** - Native AOT compatibility
+- **[Sharding](Sharding)** - **🆕** Horizontal scaling with distributed coordinator/worker architecture
+- **[Performance Optimizations](Performance-Optimizations)** - Memory and CPU optimization techniques
+- **[Rate Limit Monitoring](Rate-Limit-Monitoring)** - Advanced rate limiting with monitoring
 - **[API Reference](API-Reference)** - Quick method reference
 - **[FAQ](FAQ)** - Common questions and troubleshooting
 

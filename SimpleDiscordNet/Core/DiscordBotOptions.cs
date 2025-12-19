@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SimpleDiscordNet.Logging;
+using SimpleDiscordNet.Sharding;
 
 namespace SimpleDiscordNet;
 
@@ -63,4 +64,52 @@ public sealed record DiscordBotOptions
     /// Defaults to <see cref="LogLevel.Trace"/> (emit everything) to preserve previous behavior.
     /// </summary>
     public LogLevel MinimumLogLevel { get; init; } = LogLevel.Trace;
+
+    /// <summary>
+    /// Sharding mode: SingleProcess (all shards in one process) or Distributed (shards across multiple machines).
+    /// Example: ShardMode = ShardMode.Distributed
+    /// </summary>
+    public ShardMode ShardMode { get; init; } = ShardMode.SingleProcess;
+
+    /// <summary>
+    /// For Distributed sharding, the coordinator URL (e.g., "http://192.168.1.100:8080/").
+    /// Workers connect to this URL for registration and coordination.
+    /// Example: CoordinatorUrl = "http://192.168.1.100:8080/"
+    /// </summary>
+    public string? CoordinatorUrl { get; init; }
+
+    /// <summary>
+    /// For Distributed sharding, the URL this worker should listen on (e.g., "http://+:8080/").
+    /// Required when running as a distributed worker.
+    /// Example: WorkerListenUrl = "http://+:8080/"
+    /// </summary>
+    public string? WorkerListenUrl { get; init; }
+
+    /// <summary>
+    /// For Distributed sharding, unique identifier for this worker.
+    /// Auto-generated if not specified using machine name + GUID.
+    /// Example: WorkerId = "worker-1"
+    /// </summary>
+    public string? WorkerId { get; init; }
+
+    /// <summary>
+    /// For Distributed sharding, whether this instance is the original coordinator.
+    /// Set to true on the designated coordinator machine.
+    /// Example: IsOriginalCoordinator = true
+    /// </summary>
+    public bool IsOriginalCoordinator { get; init; } = false;
+
+    /// <summary>
+    /// For SingleProcess sharding, the specific shard ID to run (0-based).
+    /// If null, defaults to shard 0.
+    /// Example: ShardId = 0
+    /// </summary>
+    public int? ShardId { get; init; }
+
+    /// <summary>
+    /// For SingleProcess sharding, the total number of shards.
+    /// If null, defaults to 1 (no sharding).
+    /// Example: TotalShards = 4
+    /// </summary>
+    public int? TotalShards { get; init; }
 }

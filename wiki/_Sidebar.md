@@ -28,6 +28,7 @@
 ---
 
 ### Advanced
+- [Sharding](Sharding) **⚡ NEW**
 - [Performance Optimizations](Performance-Optimizations)
 - [Rate Limit Monitoring](Rate-Limit-Monitoring)
 - [API Reference](API-Reference)

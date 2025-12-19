@@ -10,7 +10,7 @@ namespace SimpleDiscordNet.Gateway;
 
 [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code", Justification = "GatewayClient uses JsonSerializerOptions configured with source-generated DiscordJsonContext for all gateway payload types.")]
 [UnconditionalSuppressMessage("AOT", "IL3050:Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.", Justification = "GatewayClient uses JsonSerializerOptions configured with source-generated DiscordJsonContext for all gateway payload types.")]
-internal sealed partial class GatewayClient(string token, DiscordIntents intents, JsonSerializerOptions json)
+internal sealed partial class GatewayClient(string token, DiscordIntents intents, JsonSerializerOptions json, int? shardId = null, int? totalShards = null)
     : IDisposable
 {
     private ClientWebSocket _ws = new();
@@ -26,6 +26,9 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
     private int _reconnectAttempt;
     private volatile int _reconnecting; // 0 = no, 1 = yes
     private volatile bool _autoReconnect = true;
+
+    internal int? ShardId { get; } = shardId;
+    internal int? TotalShards { get; } = totalShards;
 
     public event EventHandler? Connected;
     public event EventHandler<Exception?>? Disconnected;
