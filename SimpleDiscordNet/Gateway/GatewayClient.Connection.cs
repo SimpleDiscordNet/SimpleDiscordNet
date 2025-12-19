@@ -7,7 +7,7 @@ internal sealed partial class GatewayClient
     private async Task ConnectSocketAsync(CancellationToken ct)
     {
         _ws = new ClientWebSocket();
-        _ws.Options.SetRequestHeader("User-Agent", "SimpleDiscordNet (https://example, 1.0)");
+        _ws.Options.SetRequestHeader("User-Agent", "SimpleDiscordDotNet (https://example, 1.0)");
         await _ws.ConnectAsync(new Uri("wss://gateway.discord.gg/?v=10&encoding=json"), ct).ConfigureAwait(false);
         _reconnectAttempt = 0;
         _awaitingHeartbeatAck = false;
@@ -27,15 +27,15 @@ internal sealed partial class GatewayClient
         if (Interlocked.Exchange(ref _reconnecting, 1) == 1) return;
         try
         {
-            try { _heartbeatTimer?.Dispose(); } catch { }
+            try { _heartbeatTimer?.Dispose(); } catch { /* Timer disposal can throw, safe to ignore */ }
             try
             {
-                if (_ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived)
+                if (_ws.State is WebSocketState.Open or WebSocketState.CloseReceived)
                 {
                     await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "reconnect", CancellationToken.None).ConfigureAwait(false);
                 }
             }
-            catch { }
+            catch { /* WebSocket close can throw if already closed, safe to ignore */ }
 
             // Backoff before reconnection
             _reconnectAttempt++;

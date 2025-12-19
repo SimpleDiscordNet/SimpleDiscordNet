@@ -93,8 +93,7 @@ public sealed record Guild
     /// <param name="format">Image format (png, jpg, webp, gif)</param>
     public string? GetIconUrl(int size = 256, string format = "png")
     {
-        if (string.IsNullOrEmpty(Icon)) return null;
-        return $"https://cdn.discordapp.com/icons/{Id}/{Icon}.{format}?size={size}";
+        return string.IsNullOrEmpty(Icon) ? null : $"https://cdn.discordapp.com/icons/{Id}/{Icon}.{format}?size={size}";
     }
 
     /// <summary>
@@ -102,8 +101,7 @@ public sealed record Guild
     /// </summary>
     public string? GetBannerUrl(int size = 1024, string format = "png")
     {
-        if (string.IsNullOrEmpty(Banner)) return null;
-        return $"https://cdn.discordapp.com/banners/{Id}/{Banner}.{format}?size={size}";
+        return string.IsNullOrEmpty(Banner) ? null : $"https://cdn.discordapp.com/banners/{Id}/{Banner}.{format}?size={size}";
     }
 
     /// <summary>
@@ -111,8 +109,7 @@ public sealed record Guild
     /// </summary>
     public string? GetSplashUrl(int size = 1024, string format = "png")
     {
-        if (string.IsNullOrEmpty(Splash)) return null;
-        return $"https://cdn.discordapp.com/splashes/{Id}/{Splash}.{format}?size={size}";
+        return string.IsNullOrEmpty(Splash) ? null : $"https://cdn.discordapp.com/splashes/{Id}/{Splash}.{format}?size={size}";
     }
 
     /// <summary>

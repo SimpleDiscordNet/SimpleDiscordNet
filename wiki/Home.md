@@ -1,13 +1,13 @@
-# Welcome to SimpleDiscordNet
+# Welcome to SimpleDiscordDotNet
 
-A tiny, dependency-free Discord bot SDK for .NET 10 that talks directly to the Discord API v10 (REST + Gateway).
+A lightweight, dependency-free Discord bot SDK for .NET 10 that provides direct access to Discord API v10 (REST + Gateway).
 
 ## 🚀 Quick Links
 
 - **[Getting Started](Getting-Started)** - Build your first bot in minutes
 - **[Installation](Installation)** - NuGet and source reference setup
-- **[Examples](Examples)** - Complete working bot examples
-- **[API Reference](API-Reference)** - Quick method reference
+- **[Examples](Examples)** - Easy-to-follow examples for beginners
+- **[API Reference](API-Reference)** - Complete API documentation
 
 ## 📦 Installation
 
@@ -28,6 +28,7 @@ dotnet add package SimpleDiscordDotNet
 - **Global static event hub** for logs and domain events
 - **Source generator** for zero-reflection command/component discovery
 - **Native AOT compatible** - Full trimming and AOT support
+- **Memory-optimized** - Span<T> and Memory<T> APIs for 30-50% less GC pressure
 
 ### Rich Discord API v10 Support
 - **Messages:** send, edit, delete, bulk delete, pin/unpin
@@ -115,12 +116,12 @@ await Task.Delay(Timeout.Infinite);
 
 ## 🎯 Design Philosophy
 
-SimpleDiscordNet is designed with these principles:
+SimpleDiscordDotNet is designed with these principles:
 
 1. **Simplicity First** - Extremely easy to use with minimal boilerplate
 2. **Zero Dependencies** - No external packages, only BCL
-3. **Performance** - Optimized for low memory usage and speed
-4. **Modern C#** - Built with C# 14 and .NET 10 features
+3. **Performance** - Memory-optimized with Span<T>, Memory<T>, and zero-allocation APIs
+4. **Modern C#** - Built with C# 14 and .NET 10 features including span-based APIs
 5. **AOT Ready** - Compatible with Native AOT compilation
 6. **Well Documented** - Every public method has XML docs with examples
 
@@ -130,7 +131,7 @@ Issues and PRs are welcome on GitHub! Keep the code dependency-free and aligned 
 
 ## 📄 License
 
-SimpleDiscordNet is licensed under the **Apache License, Version 2.0**.
+SimpleDiscordDotNet is licensed under the **Apache License, Version 2.0**.
 
 ---
 

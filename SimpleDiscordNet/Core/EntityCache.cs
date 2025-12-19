@@ -40,7 +40,11 @@ internal sealed class EntityCache
         foreach ((string gid, Guild guild) in _guilds)
         {
             if (!_channelsByGuild.TryGetValue(gid, out List<Channel>? chs)) continue;
-            list.AddRange(chs.Select(c => new ChannelWithGuild(c, guild)));
+            list.EnsureCapacity(list.Count + chs.Count);
+            foreach (var c in chs)
+            {
+                list.Add(new ChannelWithGuild(c, guild));
+            }
         }
         return list;
     }
@@ -51,7 +55,11 @@ internal sealed class EntityCache
         foreach ((string gid, Guild guild) in _guilds)
         {
             if (!_membersByGuild.TryGetValue(gid, out List<Member>? members)) continue;
-            list.AddRange(members.Select(member => new MemberWithGuild(member, guild, member.User)));
+            list.EnsureCapacity(list.Count + members.Count);
+            foreach (var member in members)
+            {
+                list.Add(new MemberWithGuild(member, guild, member.User));
+            }
         }
         return list;
     }
@@ -62,7 +70,11 @@ internal sealed class EntityCache
         foreach ((string gid, Guild guild) in _guilds)
         {
             if (!_membersByGuild.TryGetValue(gid, out List<Member>? members)) continue;
-            list.AddRange(members.Select(member => new UserWithGuild(member.User, guild, member)));
+            list.EnsureCapacity(list.Count + members.Count);
+            foreach (var member in members)
+            {
+                list.Add(new UserWithGuild(member.User, guild, member));
+            }
         }
         return list;
     }
@@ -73,7 +85,11 @@ internal sealed class EntityCache
         foreach ((string gid, Guild guild) in _guilds)
         {
             if (guild.Roles == null) continue;
-            list.AddRange(guild.Roles.Select(role => new RoleWithGuild(role, guild)));
+            list.EnsureCapacity(list.Count + guild.Roles.Length);
+            foreach (var role in guild.Roles)
+            {
+                list.Add(new RoleWithGuild(role, guild));
+            }
         }
         return list;
     }
@@ -126,62 +142,54 @@ internal sealed class EntityCache
 
     public void RemoveMember(string guildId, string userId)
     {
-        if (_membersByGuild.TryGetValue(guildId, out List<Member>? list))
+        if (!_membersByGuild.TryGetValue(guildId, out List<Member>? list)) return;
+        lock (list)
         {
-            lock (list)
-            {
-                int idx = list.FindIndex(m => m.User.Id == userId);
-                if (idx >= 0) list.RemoveAt(idx);
-            }
+            int idx = list.FindIndex(m => m.User.Id == userId);
+            if (idx >= 0) list.RemoveAt(idx);
         }
     }
 
     public void UpsertRole(string guildId, Role role)
     {
-        if (_guilds.TryGetValue(guildId, out Guild? guild))
+        if (!_guilds.TryGetValue(guildId, out Guild? guild)) return;
+        Role[] currentRoles = guild.Roles ?? [];
+        int idx = Array.FindIndex(currentRoles, r => r.Id == role.Id);
+
+        Role[] newRoles;
+        if (idx >= 0)
         {
-            Role[] currentRoles = guild.Roles ?? [];
-            int idx = Array.FindIndex(currentRoles, r => r.Id == role.Id);
-
-            Role[] newRoles;
-            if (idx >= 0)
-            {
-                // Update existing role
-                newRoles = new Role[currentRoles.Length];
-                Array.Copy(currentRoles, newRoles, currentRoles.Length);
-                newRoles[idx] = role;
-            }
-            else
-            {
-                // Add new role
-                newRoles = new Role[currentRoles.Length + 1];
-                Array.Copy(currentRoles, newRoles, currentRoles.Length);
-                newRoles[currentRoles.Length] = role;
-            }
-
-            // Update guild with new roles array
-            _guilds[guildId] = guild with { Roles = newRoles };
+            // Update existing role
+            newRoles = new Role[currentRoles.Length];
+            currentRoles.AsSpan().CopyTo(newRoles.AsSpan());
+            newRoles[idx] = role;
         }
+        else
+        {
+            // Add new role
+            newRoles = new Role[currentRoles.Length + 1];
+            currentRoles.AsSpan().CopyTo(newRoles.AsSpan());
+            newRoles[^1] = role;
+        }
+
+        // Update guild with new roles array
+        _guilds[guildId] = guild with { Roles = newRoles };
     }
 
     public void RemoveRole(string guildId, string roleId)
     {
-        if (_guilds.TryGetValue(guildId, out Guild? guild) && guild.Roles is not null)
-        {
-            Role[] currentRoles = guild.Roles;
-            int idx = Array.FindIndex(currentRoles, r => r.Id == roleId);
+        if (!_guilds.TryGetValue(guildId, out Guild? guild) || guild.Roles is null) return;
+        Role[] currentRoles = guild.Roles;
+        int idx = Array.FindIndex(currentRoles, r => r.Id == roleId);
 
-            if (idx >= 0)
-            {
-                Role[] newRoles = new Role[currentRoles.Length - 1];
-                if (idx > 0)
-                    Array.Copy(currentRoles, 0, newRoles, 0, idx);
-                if (idx < currentRoles.Length - 1)
-                    Array.Copy(currentRoles, idx + 1, newRoles, idx, currentRoles.Length - idx - 1);
+        if (idx < 0) return;
+        Role[] newRoles = new Role[currentRoles.Length - 1];
+        if (idx > 0)
+            currentRoles.AsSpan(0, idx).CopyTo(newRoles.AsSpan());
+        if (idx < currentRoles.Length - 1)
+            currentRoles.AsSpan(idx + 1).CopyTo(newRoles.AsSpan(idx));
 
-                _guilds[guildId] = guild with { Roles = newRoles };
-            }
-        }
+        _guilds[guildId] = guild with { Roles = newRoles };
     }
 
     public void SetEmojis(string guildId, Emoji[] emojis)

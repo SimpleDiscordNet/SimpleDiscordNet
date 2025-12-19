@@ -338,11 +338,16 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
             defsBuilder.AppendLine("    new global::SimpleDiscordNet.Models.ApplicationCommandDefinition { ");
             defsBuilder.AppendLine($"        name = \"{g.Key}\", ");
             defsBuilder.AppendLine("        type = 1,");
-            var gdesc = string.IsNullOrWhiteSpace(g.Value.FirstOrDefault()?.GroupDescription) ? "group" : g.Value.First().GroupDescription!.Replace("\"", "\\\"");
+            var gdesc = g.Value.Count > 0 && !string.IsNullOrWhiteSpace(g.Value[0]?.GroupDescription) ? g.Value[0].GroupDescription!.Replace("\"", "\\\"") : "group";
             defsBuilder.AppendLine($"        description = \"{gdesc}\",");
             defsBuilder.AppendLine("        options = new global::SimpleDiscordNet.Models.ApplicationCommandDefinition[] {");
-            foreach (var sc in g.Value.GroupBy(x => (x.SlashName!, x.SlashDescription ?? "command")).Select(x => x.First()))
+
+            var seen = new HashSet<(string, string)>();
+            foreach (var sc in g.Value)
             {
+                var key = (sc.SlashName!, sc.SlashDescription ?? "command");
+                if (!seen.Add(key)) continue;
+
                 var desc = string.IsNullOrWhiteSpace(sc.SlashDescription) ? "command" : sc.SlashDescription!.Replace("\"", "\\\"");
                 var optsArray = BuildOptionsArray(sc.Options);
                 defsBuilder.AppendLine($"            new global::SimpleDiscordNet.Models.ApplicationCommandDefinition {{ name = \"{sc.SlashName}\", type = 1, description = \"{desc}\", options = {optsArray} }},");
@@ -350,8 +355,13 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
             defsBuilder.AppendLine("        }");
             defsBuilder.AppendLine("    },");
         }
-        foreach (var u in ungrouped.GroupBy(x => (x.SlashName!, x.SlashDescription ?? "command")).Select(x => x.First()))
+
+        var seenUngrouped = new HashSet<(string, string)>();
+        foreach (var u in ungrouped)
         {
+            var key = (u.SlashName!, u.SlashDescription ?? "command");
+            if (!seenUngrouped.Add(key)) continue;
+
             var desc = string.IsNullOrWhiteSpace(u.SlashDescription) ? "command" : u.SlashDescription!.Replace("\"", "\\\"");
             var optsArray = BuildOptionsArray(u.Options);
             defsBuilder.AppendLine($"    new global::SimpleDiscordNet.Models.ApplicationCommandDefinition {{ name = \"{u.SlashName}\", type = 1, description = \"{desc}\", options = {optsArray} }},");
@@ -390,15 +400,15 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
                         // Nullable types - return nullable values
                         extraction = opt.TypeName switch
                         {
-                            "string" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.String",
-                            "long" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Integer",
-                            "int" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Integer is long _intVal_{opt.ParameterName} ? (int)_intVal_{opt.ParameterName} : (int?)null",
-                            "bool" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Boolean",
-                            "double" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Integer is long _doubleVal_{opt.ParameterName} ? (double)_doubleVal_{opt.ParameterName} : (double?)null",
-                            "float" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Integer is long _floatVal_{opt.ParameterName} ? (float)_floatVal_{opt.ParameterName} : (float?)null",
-                            "User" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.String is string _userId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetMember(_userId_{opt.ParameterName}, ctx.Event.GuildId)?.User : null",
-                            "Channel" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.String is string _channelId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetChannel(_channelId_{opt.ParameterName}, ctx.Event.GuildId) : null",
-                            "Role" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.String is string _roleId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetRole(_roleId_{opt.ParameterName}, ctx.Event.GuildId) : null",
+                            "string" => $"FindOption(_opts, \"{normalizedName}\")?.String",
+                            "long" => $"FindOption(_opts, \"{normalizedName}\")?.Integer",
+                            "int" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _intVal_{opt.ParameterName} ? (int)_intVal_{opt.ParameterName} : (int?)null",
+                            "bool" => $"FindOption(_opts, \"{normalizedName}\")?.Boolean",
+                            "double" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _doubleVal_{opt.ParameterName} ? (double)_doubleVal_{opt.ParameterName} : (double?)null",
+                            "float" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _floatVal_{opt.ParameterName} ? (float)_floatVal_{opt.ParameterName} : (float?)null",
+                            "User" => $"FindOption(_opts, \"{normalizedName}\")?.String is string _userId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetMember(_userId_{opt.ParameterName}, ctx.Event.GuildId)?.User : null",
+                            "Channel" => $"FindOption(_opts, \"{normalizedName}\")?.String is string _channelId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetChannel(_channelId_{opt.ParameterName}, ctx.Event.GuildId) : null",
+                            "Role" => $"FindOption(_opts, \"{normalizedName}\")?.String is string _roleId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetRole(_roleId_{opt.ParameterName}, ctx.Event.GuildId) : null",
                             _ => "null"
                         };
                     }
@@ -407,15 +417,15 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
                         // Non-nullable types - provide defaults for value types
                         extraction = opt.TypeName switch
                         {
-                            "string" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.String",
-                            "long" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Integer ?? 0L",
-                            "int" => $"(int)(_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Integer ?? 0L)",
-                            "bool" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Boolean ?? false",
-                            "double" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Integer is long _doubleVal_{opt.ParameterName} ? (double)_doubleVal_{opt.ParameterName} : 0.0",
-                            "float" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.Integer is long _floatVal_{opt.ParameterName} ? (float)_floatVal_{opt.ParameterName} : 0f",
-                            "User" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.String is string _userId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetMember(_userId_{opt.ParameterName}, ctx.Event.GuildId)?.User : null",
-                            "Channel" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.String is string _channelId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetChannel(_channelId_{opt.ParameterName}, ctx.Event.GuildId) : null",
-                            "Role" => $"_opts.FirstOrDefault(o => o.Name == \"{normalizedName}\")?.String is string _roleId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetRole(_roleId_{opt.ParameterName}, ctx.Event.GuildId) : null",
+                            "string" => $"FindOption(_opts, \"{normalizedName}\")?.String",
+                            "long" => $"FindOption(_opts, \"{normalizedName}\")?.Integer ?? 0L",
+                            "int" => $"(int)(FindOption(_opts, \"{normalizedName}\")?.Integer ?? 0L)",
+                            "bool" => $"FindOption(_opts, \"{normalizedName}\")?.Boolean ?? false",
+                            "double" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _doubleVal_{opt.ParameterName} ? (double)_doubleVal_{opt.ParameterName} : 0.0",
+                            "float" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _floatVal_{opt.ParameterName} ? (float)_floatVal_{opt.ParameterName} : 0f",
+                            "User" => $"FindOption(_opts, \"{normalizedName}\")?.String is string _userId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetMember(_userId_{opt.ParameterName}, ctx.Event.GuildId)?.User : null",
+                            "Channel" => $"FindOption(_opts, \"{normalizedName}\")?.String is string _channelId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetChannel(_channelId_{opt.ParameterName}, ctx.Event.GuildId) : null",
+                            "Role" => $"FindOption(_opts, \"{normalizedName}\")?.String is string _roleId_{opt.ParameterName} && ctx.Event?.GuildId != null ? global::SimpleDiscordNet.DiscordBot.Cache.GetRole(_roleId_{opt.ParameterName}, ctx.Event.GuildId) : null",
                             _ => "null"
                         };
                     }
@@ -467,6 +477,16 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
         // Generated manifest/provider
         sb.AppendLine("    internal sealed class __GeneratedManifest : global::SimpleDiscordNet.Commands.IGeneratedManifest");
         sb.AppendLine("    {");
+        sb.AppendLine("        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
+        sb.AppendLine("        private static global::SimpleDiscordNet.Models.InteractionOption? FindOption(global::SimpleDiscordNet.Models.InteractionOption[] options, string name)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            foreach (var opt in options)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                if (opt.Name == name) return opt;");
+        sb.AppendLine("            }");
+        sb.AppendLine("            return null;");
+        sb.AppendLine("        }");
+        sb.AppendLine();
         // Ungrouped
         sb.AppendLine("        public global::System.Collections.Generic.IReadOnlyDictionary<string, global::SimpleDiscordNet.Commands.CommandHandler> Ungrouped { get; } = new global::System.Collections.Generic.Dictionary<string, global::SimpleDiscordNet.Commands.CommandHandler>(System.StringComparer.Ordinal)");
         sb.AppendLine("        {");
@@ -566,15 +586,35 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
 
     private static string NormalizeName(string name)
     {
-        var s = (name ?? string.Empty).Trim().ToLowerInvariant().Replace(' ', '-');
-        var filtered = new string(s.Where(ch => (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_').ToArray());
-        if (filtered.Length == 0) filtered = "cmd";
-        if (filtered.Length > 32) filtered = filtered.Substring(0, 32);
-        return filtered;
+        if (string.IsNullOrWhiteSpace(name)) return "cmd";
+
+        var s = name.Trim().ToLowerInvariant().Replace(' ', '-');
+        var sb = new StringBuilder(s.Length);
+
+        foreach (char ch in s)
+        {
+            if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_')
+                sb.Append(ch);
+        }
+
+        if (sb.Length == 0) return "cmd";
+        if (sb.Length > 32) sb.Length = 32;
+
+        return sb.ToString();
     }
 
     private static string SanitizeId(string id)
-        => new string(id.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray());
+    {
+        if (string.IsNullOrEmpty(id)) return "_";
+
+        var sb = new StringBuilder(id.Length);
+        foreach (char ch in id)
+        {
+            sb.Append(char.IsLetterOrDigit(ch) ? ch : '_');
+        }
+
+        return sb.ToString();
+    }
 
     private static string BuildOptionsArray(List<OptionParameter> options)
     {
@@ -619,7 +659,14 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
             // Add channel types
             if (!string.IsNullOrWhiteSpace(opt.ChannelTypes))
             {
-                var channelTypesList = opt.ChannelTypes!.Split(',').Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s));
+                var typesParts = opt.ChannelTypes!.Split(',');
+                var channelTypesList = new List<string>(typesParts.Length);
+                foreach (var part in typesParts)
+                {
+                    var trimmed = part.Trim();
+                    if (!string.IsNullOrEmpty(trimmed))
+                        channelTypesList.Add(trimmed);
+                }
                 sb.Append($", channel_types = new int[] {{ {string.Join(", ", channelTypesList)} }}");
             }
 

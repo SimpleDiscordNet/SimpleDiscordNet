@@ -10,7 +10,6 @@ namespace SimpleDiscordNet.Rest;
 internal sealed class RestClient : IDisposable
 {
     private readonly HttpClient _http;
-    private readonly string _token;
     private readonly JsonSerializerOptions _json;
     private readonly NativeLogger _logger;
     private readonly RateLimiter _rateLimiter;
@@ -21,13 +20,28 @@ internal sealed class RestClient : IDisposable
     public RestClient(HttpClient http, string token, JsonSerializerOptions json, NativeLogger logger, RateLimiter limiter)
     {
         _http = http;
-        _token = token;
         _json = json;
         _logger = logger;
         _rateLimiter = limiter;
 
         _http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bot", token);
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("SimpleDiscordNet (https://github.com/SimpleDiscordNet/SimpleDiscordNet, 1.1.2)");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("SimpleDiscordDotNet (https://github.com/YourUsername/SimpleDiscordDotNet, 1.2.0)");
+    }
+
+    /// <summary>
+    /// Attempts to read the response body for error logging. Returns null if reading fails.
+    /// </summary>
+    private async Task<string?> TryReadErrorBodyAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Log(LogLevel.Debug, $"Failed to read error response body: {ex.Message}");
+            return null;
+        }
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string route, object? payload, CancellationToken ct)
@@ -39,10 +53,16 @@ internal sealed class RestClient : IDisposable
             // Acquire rate limit slot
             using RateLimitHandle handle = await _rateLimiter.AcquireAsync(route, ct).ConfigureAwait(false);
 
-            using HttpRequestMessage req = new HttpRequestMessage(method, BaseUrl + route);
+            using HttpRequestMessage req = new(method, BaseUrl + route);
             if (payload != null)
             {
-                req.Content = new StringContent(JsonSerializer.Serialize(payload, _json), System.Text.Encoding.UTF8, "application/json");
+                var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+                using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+                {
+                    JsonSerializer.Serialize(writer, payload, _json);
+                }
+                req.Content = new ReadOnlyMemoryContent(buffer.WrittenMemory);
+                req.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
             }
 
             HttpResponseMessage res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
@@ -69,8 +89,8 @@ internal sealed class RestClient : IDisposable
                 TimeSpan retryAfter = TimeSpan.FromSeconds(1);
                 if (res.Headers.TryGetValues("Retry-After", out var retryValues))
                 {
-                    string? retryValue = retryValues.FirstOrDefault();
-                    if (double.TryParse(retryValue, out double retrySeconds))
+                    using var enumerator = retryValues.GetEnumerator();
+                    if (enumerator.MoveNext() && double.TryParse(enumerator.Current.AsSpan(), out double retrySeconds))
                     {
                         retryAfter = TimeSpan.FromSeconds(retrySeconds);
                     }
@@ -113,12 +133,11 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Get, route, null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on GET {route}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
-        await using System.IO.Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         return await JsonSerializer.DeserializeAsync<T>(s, _json, ct).ConfigureAwait(false);
     }
 
@@ -127,8 +146,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Put, route, payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PUT {route}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -139,22 +157,31 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Post, route, payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on POST {route}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
     }
 
-    public async Task PatchAsync(string route, object payload, CancellationToken ct)
+    public async Task<T?> PostAsync<T>(string route, object payload, CancellationToken ct)
     {
-        // Use explicit PATCH method (HttpMethod.Patch is available, but construct to be safe)
-        HttpMethod patch = new HttpMethod("PATCH");
-        using HttpResponseMessage res = await SendAsync(patch, route, payload, ct).ConfigureAwait(false);
+        using HttpResponseMessage res = await SendAsync(HttpMethod.Post, route, payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
+            _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on POST {route}. Body: {body}");
+        }
+        res.EnsureSuccessStatusCode();
+        await using Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        return await JsonSerializer.DeserializeAsync<T>(s, _json, ct).ConfigureAwait(false);
+    }
+
+    public async Task PatchAsync(string route, object payload, CancellationToken ct)
+    {
+        using HttpResponseMessage res = await SendAsync(HttpMethod.Patch, route, payload, ct).ConfigureAwait(false);
+        if (!res.IsSuccessStatusCode)
+        {
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PATCH {route}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -165,22 +192,29 @@ internal sealed class RestClient : IDisposable
         // Multipart uploads need special handling - acquire rate limit but don't use SendAsync wrapper
         using RateLimitHandle handle = await _rateLimiter.AcquireAsync(route, ct).ConfigureAwait(false);
 
-        using MultipartFormDataContent content = new MultipartFormDataContent();
-        string json = JsonSerializer.Serialize(payload, _json);
-        content.Add(new StringContent(json, System.Text.Encoding.UTF8, "application/json"), "payload_json");
-        ByteArrayContent bytesContent = new ByteArrayContent(file.data.ToArray());
+        using MultipartFormDataContent content = new();
+        var jsonBuffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(jsonBuffer))
+        {
+            JsonSerializer.Serialize(writer, payload, _json);
+        }
+        var jsonContent = new ReadOnlyMemoryContent(jsonBuffer.WrittenMemory);
+        jsonContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        content.Add(jsonContent, "payload_json");
+
+        ReadOnlyMemoryContent bytesContent = new(file.data);
         bytesContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
         content.Add(bytesContent, "files[0]", file.fileName);
 
-        using HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Post, BaseUrl + route) { Content = content };
+        using HttpRequestMessage req = new(HttpMethod.Post, BaseUrl + route);
+        req.Content = content;
         HttpResponseMessage res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
 
         await _rateLimiter.UpdateFromResponseAsync(route, res).ConfigureAwait(false);
 
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on POST (multipart) {route}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -220,8 +254,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{channelId}/permissions/{overwriteId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{channelId}/permissions/{overwriteId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -235,12 +268,11 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Post, $"/guilds/{guildId}/roles", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on POST /guilds/{guildId}/roles. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
-        await using System.IO.Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         return await JsonSerializer.DeserializeAsync<T>(s, _json, ct).ConfigureAwait(false);
     }
 
@@ -249,16 +281,14 @@ internal sealed class RestClient : IDisposable
     /// </summary>
     public async Task<T?> PatchGuildRoleAsync<T>(string guildId, string roleId, object payload, CancellationToken ct)
     {
-        HttpMethod patch = new HttpMethod("PATCH");
-        using HttpResponseMessage res = await SendAsync(patch, $"/guilds/{guildId}/roles/{roleId}", payload, ct).ConfigureAwait(false);
+        using HttpResponseMessage res = await SendAsync(HttpMethod.Patch, $"/guilds/{guildId}/roles/{roleId}", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PATCH /guilds/{guildId}/roles/{roleId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
-        await using System.IO.Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         return await JsonSerializer.DeserializeAsync<T>(s, _json, ct).ConfigureAwait(false);
     }
 
@@ -270,8 +300,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/guilds/{guildId}/roles/{roleId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /guilds/{guildId}/roles/{roleId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -287,12 +316,11 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Post, $"/guilds/{guildId}/channels", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on POST /guilds/{guildId}/channels. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
-        await using System.IO.Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         return await JsonSerializer.DeserializeAsync<T>(s, _json, ct).ConfigureAwait(false);
     }
 
@@ -301,16 +329,14 @@ internal sealed class RestClient : IDisposable
     /// </summary>
     public async Task<T?> PatchChannelAsync<T>(string channelId, object payload, CancellationToken ct)
     {
-        HttpMethod patch = new HttpMethod("PATCH");
-        using HttpResponseMessage res = await SendAsync(patch, $"/channels/{channelId}", payload, ct).ConfigureAwait(false);
+        using HttpResponseMessage res = await SendAsync(HttpMethod.Patch, $"/channels/{channelId}", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PATCH /channels/{channelId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
-        await using System.IO.Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         return await JsonSerializer.DeserializeAsync<T>(s, _json, ct).ConfigureAwait(false);
     }
 
@@ -322,8 +348,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{channelId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{channelId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -353,16 +378,14 @@ internal sealed class RestClient : IDisposable
     /// </summary>
     public async Task<T?> PatchMessageAsync<T>(string channelId, string messageId, object payload, CancellationToken ct)
     {
-        HttpMethod patch = new HttpMethod("PATCH");
-        using HttpResponseMessage res = await SendAsync(patch, $"/channels/{channelId}/messages/{messageId}", payload, ct).ConfigureAwait(false);
+        using HttpResponseMessage res = await SendAsync(HttpMethod.Patch, $"/channels/{channelId}/messages/{messageId}", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PATCH /channels/{channelId}/messages/{messageId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
-        await using System.IO.Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
         return await JsonSerializer.DeserializeAsync<T>(s, _json, ct).ConfigureAwait(false);
     }
 
@@ -374,8 +397,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{channelId}/messages/{messageId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{channelId}/messages/{messageId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -390,8 +412,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Post, $"/channels/{channelId}/messages/bulk-delete", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on POST /channels/{channelId}/messages/bulk-delete. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -407,8 +428,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Put, $"/channels/{channelId}/messages/{messageId}/reactions/{emoji}/@me", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PUT /channels/{channelId}/messages/{messageId}/reactions/{emoji}/@me. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -422,8 +442,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{channelId}/messages/{messageId}/reactions/{emoji}/@me", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{channelId}/messages/{messageId}/reactions/{emoji}/@me. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -437,8 +456,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{channelId}/messages/{messageId}/reactions/{emoji}/{userId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{channelId}/messages/{messageId}/reactions/{emoji}/{userId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -458,8 +476,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{channelId}/messages/{messageId}/reactions", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{channelId}/messages/{messageId}/reactions. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -473,8 +490,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{channelId}/messages/{messageId}/reactions/{emoji}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{channelId}/messages/{messageId}/reactions/{emoji}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -490,8 +506,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Put, $"/channels/{channelId}/pins/{messageId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PUT /channels/{channelId}/pins/{messageId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -505,8 +520,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{channelId}/pins/{messageId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{channelId}/pins/{messageId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -528,8 +542,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/guilds/{guildId}/members/{userId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /guilds/{guildId}/members/{userId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -544,8 +557,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Put, $"/guilds/{guildId}/bans/{userId}", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PUT /guilds/{guildId}/bans/{userId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -559,8 +571,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/guilds/{guildId}/bans/{userId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /guilds/{guildId}/bans/{userId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -576,8 +587,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Put, $"/guilds/{guildId}/members/{userId}/roles/{roleId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PUT /guilds/{guildId}/members/{userId}/roles/{roleId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -591,8 +601,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/guilds/{guildId}/members/{userId}/roles/{roleId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /guilds/{guildId}/members/{userId}/roles/{roleId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -601,15 +610,14 @@ internal sealed class RestClient : IDisposable
     // ---- Typing indicator ----
 
     /// <summary>
-    /// Trigger typing indicator in a channel (lasts 10 seconds or until a message is sent).
+    /// Trigger the typing indicator in a channel (lasts 10 seconds or until a message is sent).
     /// </summary>
     public async Task TriggerTypingIndicatorAsync(string channelId, CancellationToken ct)
     {
         using HttpResponseMessage res = await SendAsync(HttpMethod.Post, $"/channels/{channelId}/typing", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on POST /channels/{channelId}/typing. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -625,8 +633,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Put, $"/channels/{threadId}/thread-members/@me", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PUT /channels/{threadId}/thread-members/@me. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -640,8 +647,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{threadId}/thread-members/@me", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{threadId}/thread-members/@me. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -655,8 +661,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Put, $"/channels/{threadId}/thread-members/{userId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on PUT /channels/{threadId}/thread-members/{userId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -670,8 +675,7 @@ internal sealed class RestClient : IDisposable
         using HttpResponseMessage res = await SendAsync(HttpMethod.Delete, $"/channels/{threadId}/thread-members/{userId}", null, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
-            string? body = null;
-            try { body = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false); } catch { }
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
             _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on DELETE /channels/{threadId}/thread-members/{userId}. Body: {body}");
         }
         res.EnsureSuccessStatusCode();
@@ -689,5 +693,9 @@ internal sealed class RestClient : IDisposable
     public RateLimitBucketInfo? GetBucketStats(string bucketId)
         => _rateLimiter.GetBucketInfo(bucketId);
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _http.Dispose();
+        _rateLimiter.Dispose();
+    }
 }

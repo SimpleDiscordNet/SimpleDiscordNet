@@ -1,5 +1,3 @@
-using System.Threading;
-
 namespace SimpleDiscordNet.Rest;
 
 /// <summary>
@@ -8,7 +6,6 @@ namespace SimpleDiscordNet.Rest;
 internal sealed class RateLimitBucket
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private readonly Queue<TaskCompletionSource<IDisposable>> _waitQueue = new();
     private readonly TimeProvider _time;
 
     public string BucketId { get; }
@@ -35,6 +32,7 @@ internal sealed class RateLimitBucket
     public async Task<IDisposable> AcquireAsync(CancellationToken ct)
     {
         await _semaphore.WaitAsync(ct).ConfigureAwait(false);
+
         try
         {
             // Check if we need to wait for rate limit reset
@@ -72,11 +70,14 @@ internal sealed class RateLimitBucket
 
             _totalRequests++;
 
-            return new BucketReleaser(this);
+            // Return disposable that will release the semaphore when disposed
+            return new BucketReleaser(_semaphore);
         }
-        finally
+        catch
         {
+            // If anything goes wrong, release the semaphore immediately
             _semaphore.Release();
+            throw;
         }
     }
 
@@ -89,30 +90,46 @@ internal sealed class RateLimitBucket
             bool wasUpdated = false;
 
             // Parse rate limit headers
-            if (response.Headers.TryGetValues("X-RateLimit-Limit", out var limitValues)
-                && int.TryParse(limitValues.FirstOrDefault(), out int limit))
+            if (response.Headers.TryGetValues("X-RateLimit-Limit", out var limitValues))
             {
-                _limit = limit;
-                wasUpdated = true;
+                using var enumerator = limitValues.GetEnumerator();
+                if (enumerator.MoveNext() && int.TryParse(enumerator.Current.AsSpan(), out int limit))
+                {
+                    _limit = limit;
+                    wasUpdated = true;
+                }
             }
 
-            if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var remainingValues)
-                && int.TryParse(remainingValues.FirstOrDefault(), out int remaining))
+            if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var remainingValues))
             {
-                _remaining = remaining;
-                wasUpdated = true;
+                using var enumerator = remainingValues.GetEnumerator();
+                if (enumerator.MoveNext() && int.TryParse(enumerator.Current.AsSpan(), out int remaining))
+                {
+                    _remaining = remaining;
+                    wasUpdated = true;
+                }
             }
 
-            if (response.Headers.TryGetValues("X-RateLimit-Reset", out var resetValues)
-                && double.TryParse(resetValues.FirstOrDefault(), out double resetTimestamp))
+            if (response.Headers.TryGetValues("X-RateLimit-Reset", out var resetValues))
             {
-                _resetAt = DateTimeOffset.FromUnixTimeSeconds((long)resetTimestamp);
-                wasUpdated = true;
+                using var enumerator = resetValues.GetEnumerator();
+                if (enumerator.MoveNext() && double.TryParse(enumerator.Current.AsSpan(), out double resetTimestamp))
+                {
+                    _resetAt = DateTimeOffset.FromUnixTimeSeconds((long)resetTimestamp);
+                    wasUpdated = true;
+                }
             }
 
             // Check for global rate limit
-            _isGlobal = response.Headers.TryGetValues("X-RateLimit-Global", out var globalValues)
-                        && globalValues.FirstOrDefault() == "true";
+            _isGlobal = false;
+            if (response.Headers.TryGetValues("X-RateLimit-Global", out var globalValues))
+            {
+                using var enumerator = globalValues.GetEnumerator();
+                if (enumerator.MoveNext())
+                {
+                    _isGlobal = enumerator.Current.AsSpan().Equals("true", StringComparison.Ordinal);
+                }
+            }
 
             if (wasUpdated)
             {
@@ -146,16 +163,23 @@ internal sealed class RateLimitBucket
             TimeSpan retryAfter = TimeSpan.FromSeconds(1);
             if (response.Headers.TryGetValues("Retry-After", out var retryValues))
             {
-                string? retryValue = retryValues.FirstOrDefault();
-                if (double.TryParse(retryValue, out double retrySeconds))
+                using var enumerator = retryValues.GetEnumerator();
+                if (enumerator.MoveNext() && double.TryParse(enumerator.Current.AsSpan(), out double retrySeconds))
                 {
                     retryAfter = TimeSpan.FromSeconds(retrySeconds);
                 }
             }
 
             // Check if this is a global rate limit
-            bool isGlobal = response.Headers.TryGetValues("X-RateLimit-Global", out var globalValues)
-                           && globalValues.FirstOrDefault() == "true";
+            bool isGlobal = false;
+            if (response.Headers.TryGetValues("X-RateLimit-Global", out var globalValues))
+            {
+                using var enumerator = globalValues.GetEnumerator();
+                if (enumerator.MoveNext())
+                {
+                    isGlobal = enumerator.Current.AsSpan().Equals("true", StringComparison.Ordinal);
+                }
+            }
 
             // Update reset time
             _resetAt = now + retryAfter;
@@ -197,11 +221,16 @@ internal sealed class RateLimitBucket
         };
     }
 
-    private sealed class BucketReleaser(RateLimitBucket bucket) : IDisposable
+    private sealed class BucketReleaser(SemaphoreSlim semaphore) : IDisposable
     {
+        private int _disposed;
+
         public void Dispose()
         {
-            // Nothing to release - bucket manages its own state
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                semaphore.Release();
+            }
         }
     }
 }

@@ -31,23 +31,22 @@ internal sealed class SlashCommandService(NativeLogger logger)
             _ungrouped[kv.Key] = kv.Value;
         foreach (var grp in manifest.Grouped)
         {
-            if (!_grouped.TryGetValue(grp.Key, out var inner))
+            if (!_grouped.TryGetValue(grp.Key, out Dictionary<string, CommandHandler>? inner))
             {
                 inner = new Dictionary<string, CommandHandler>(StringComparer.Ordinal);
                 _grouped[grp.Key] = inner;
             }
-            foreach (var kv in grp.Value)
-                inner[kv.Key] = kv.Value;
+            foreach ((string key, CommandHandler value) in grp.Value)
+                inner[key] = value;
         }
     }
 
     public ApplicationCommandDefinition[] GetDefinitions(ApplicationCommandDefinition[]? fromGenerator)
-        => fromGenerator ?? Array.Empty<ApplicationCommandDefinition>();
+        => fromGenerator ?? [];
 
     public async Task HandleAsync(InteractionCreateEvent e, RestClient rest, CancellationToken ct)
     {
-        var data = e.Data;
-        if (data is null)
+        if (e.Data is not { } data)
         {
             logger.Log(LogLevel.Warning, "Interaction missing command data.");
             return;
@@ -59,7 +58,7 @@ internal sealed class SlashCommandService(NativeLogger logger)
         // Only generated delegate-based handlers are supported
         if (sub is not null)
         {
-            if (_grouped.TryGetValue(top, out var dict) && dict.TryGetValue(sub, out var handler))
+            if (_grouped.TryGetValue(top, out Dictionary<string, CommandHandler>? dict) && dict.TryGetValue(sub, out CommandHandler? handler))
             {
                 await InvokeGeneratedAsync(handler, e, rest, ct, top, sub).ConfigureAwait(false);
                 return;
@@ -78,7 +77,7 @@ internal sealed class SlashCommandService(NativeLogger logger)
     {
         try
         {
-            var ctx = new InteractionContext(rest, e);
+            InteractionContext ctx = new InteractionContext(rest, e);
             if (handler.AutoDefer)
                 await ctx.DeferAsync(ephemeral: false, ct).ConfigureAwait(false);
             await handler.Invoke(ctx, ct).ConfigureAwait(false);

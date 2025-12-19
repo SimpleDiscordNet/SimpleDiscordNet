@@ -38,11 +38,11 @@ internal sealed partial class GatewayClient
             if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
             User user = ParseUser(data.GetProperty("user"));
             string[] roles = data.TryGetProperty("roles", out JsonElement r) && r.ValueKind == JsonValueKind.Array
-                ? r.EnumerateArray().Select(x => x.GetString()!).Where(s => s is not null).ToArray() 
+                ? r.EnumerateArray().Select(static x => x.GetString()!).ToArray()
                 : [];
             string? nick = data.TryGetProperty("nick", out JsonElement n) && n.ValueKind != JsonValueKind.Null ? n.GetString() : null;
 
-            Member member = new Member { User = user, Nick = nick, Roles = roles };
+            Member member = new() { User = user, Nick = nick, Roles = roles };
             evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetString()!, Member = member });
         }
         catch (Exception ex) { Error?.Invoke(this, ex); }

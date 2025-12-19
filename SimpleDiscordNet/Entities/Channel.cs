@@ -48,11 +48,11 @@ public sealed record Channel
 
     /// <summary>Gets all role permission overwrites</summary>
     public IEnumerable<ChannelPermissionOverwrite> GetRoleOverwrites()
-        => Permission_Overwrites?.Where(o => o.IsRole) ?? Enumerable.Empty<ChannelPermissionOverwrite>();
+        => Permission_Overwrites?.Where(o => o.IsRole) ?? [];
 
     /// <summary>Gets all member permission overwrites</summary>
     public IEnumerable<ChannelPermissionOverwrite> GetMemberOverwrites()
-        => Permission_Overwrites?.Where(o => o.IsMember) ?? Enumerable.Empty<ChannelPermissionOverwrite>();
+        => Permission_Overwrites?.Where(o => o.IsMember) ?? [];
 }
 
 public sealed record ChannelPermissionOverwrite
@@ -65,9 +65,9 @@ public sealed record ChannelPermissionOverwrite
     /// <summary>Bitset as string per Discord API</summary>
     public required string Deny { get; init; }
 
-    /// <summary>Returns true if this overwrite is for a role (Type = 0)</summary>
+    /// <summary>Returns true if this overwriting is for a role (Type = 0)</summary>
     public bool IsRole => Type == 0;
-    /// <summary>Returns true if this overwrite is for a member (Type = 1)</summary>
+    /// <summary>Returns true if this overwriting is for a member (Type = 1)</summary>
     public bool IsMember => Type == 1;
 
     /// <summary>Parses the Allow permissions as a ulong bitset</summary>

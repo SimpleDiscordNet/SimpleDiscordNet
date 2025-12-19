@@ -85,7 +85,7 @@ public sealed class EmbedBuilder
 
     internal Embed ToModel()
     {
-        var model = new Embed
+        Embed model = new()
         {
             title = Title,
             description = Description,
@@ -96,7 +96,7 @@ public sealed class EmbedBuilder
             author = Author is null ? null : new EmbedAuthor { name = Author.Value.name, url = Author.Value.url, icon_url = Author.Value.iconUrl },
             thumbnail = ThumbnailUrl is null ? null : new EmbedThumbnail { url = ThumbnailUrl },
             image = ImageUrl is null ? null : new EmbedImage { url = ImageUrl },
-            fields = Fields.Count == 0 ? null : Fields.Select(f => new EmbedField { name = f.name, value = f.value, inline = f.inline ? true : null }).ToArray()
+            fields = Fields.Count == 0 ? null : Fields.Select(static f => new EmbedField { name = f.name, value = f.value, inline = f.inline ? true : null }).ToArray()
         };
         return model;
     }

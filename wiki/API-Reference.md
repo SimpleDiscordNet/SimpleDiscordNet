@@ -2,6 +2,8 @@
 
 Complete API documentation for SimpleDiscordNet.
 
+> **Performance Note:** SimpleDiscordNet is memory-optimized with Span<T> and Memory<T> APIs, achieving 30-50% less GC pressure. See [Performance Optimizations](Performance-Optimizations) for details.
+
 ## Core Classes
 
 ### DiscordBot

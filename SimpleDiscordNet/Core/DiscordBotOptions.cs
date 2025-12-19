@@ -15,11 +15,11 @@ public sealed record DiscordBotOptions
     public DiscordIntents Intents { get; init; } = DiscordIntents.Guilds | DiscordIntents.GuildMessages | DiscordIntents.DirectMessages | DiscordIntents.MessageContent;
 
     /// <summary>System.Text.Json options. Defaults to source-generated DiscordJsonContext with case-insensitive props.</summary>
-    public JsonSerializerOptions JsonOptions { get; init; } = new(SimpleDiscordNet.Serialization.DiscordJsonContext.Default.Options)
+    public JsonSerializerOptions JsonOptions { get; init; } = new(Serialization.DiscordJsonContext.Default.Options)
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = true,
-        TypeInfoResolver = SimpleDiscordNet.Serialization.DiscordJsonContext.Default
+        TypeInfoResolver = Serialization.DiscordJsonContext.Default
     };
 
     /// <summary>Optional time provider for testing or customization.</summary>

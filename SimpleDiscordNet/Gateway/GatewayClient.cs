@@ -10,12 +10,10 @@ namespace SimpleDiscordNet.Gateway;
 
 [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code", Justification = "GatewayClient uses JsonSerializerOptions configured with source-generated DiscordJsonContext for all gateway payload types.")]
 [UnconditionalSuppressMessage("AOT", "IL3050:Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.", Justification = "GatewayClient uses JsonSerializerOptions configured with source-generated DiscordJsonContext for all gateway payload types.")]
-internal sealed partial class GatewayClient(string token, DiscordIntents intents, JsonSerializerOptions json, NativeLogger logger, TimeProvider time)
+internal sealed partial class GatewayClient(string token, DiscordIntents intents, JsonSerializerOptions json)
     : IDisposable
 {
-    private readonly NativeLogger _logger = logger;
     private ClientWebSocket _ws = new();
-    private readonly TimeProvider _time = time;
     private readonly CancellationTokenSource _internalCts = new();
     private Task? _loopTask;
     private long _seq;
@@ -75,7 +73,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
         await ConnectSocketAsync(cancellationToken).ConfigureAwait(false);
-        _loopTask = Task.Run(() => ReceiveLoop(_internalCts.Token));
+        _loopTask = Task.Run(() => ReceiveLoop(_internalCts.Token), cancellationToken);
         Connected?.Invoke(this, EventArgs.Empty);
     }
 
@@ -96,8 +94,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
         }
         finally
         {
-            try { _heartbeatTimer?.Dispose(); } catch { // ignored
-            }
+            try { _heartbeatTimer?.Dispose(); } catch { /* ignored */ }
 
             Disconnected?.Invoke(this, null);
         }
@@ -188,7 +185,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                     emojis = emojiList.ToArray();
                 }
 
-                Guild g = new Guild
+                Guild g = new()
                 {
                     Id = guildId,
                     Name = data.GetProperty("name").GetString() ?? string.Empty,
@@ -227,7 +224,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                         {
                             User user = ParseUser(userData);
                             string[] memberRoles = memberData.TryGetProperty("roles", out JsonElement rolesArr) && rolesArr.ValueKind == JsonValueKind.Array
-                                ? rolesArr.EnumerateArray().Select(x => x.GetString()!).Where(s => s is not null).ToArray()
+                                ? rolesArr.EnumerateArray().Select(static x => x.GetString()!).ToArray()
                                 : [];
                             string? nick = memberData.TryGetProperty("nick", out JsonElement nickEl) && nickEl.ValueKind != JsonValueKind.Null ? nickEl.GetString() : null;
 
@@ -273,7 +270,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
         {
             try
             {
-                Guild g = new Guild
+                Guild g = new()
                 {
                     Id = data.GetProperty("id").GetString()!,
                     Name = data.GetProperty("name").GetString() ?? string.Empty
@@ -299,7 +296,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                 Emoji[]? emojis = null;
                 if (data.TryGetProperty("emojis", out JsonElement emojisEl) && emojisEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Emoji> emojiList = new();
+                    List<Emoji> emojiList = [];
                     foreach (JsonElement emojiData in emojisEl.EnumerateArray())
                     {
                         Emoji emoji = new()
@@ -383,14 +380,14 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                 Member[]? members = null;
                 if (data.TryGetProperty("members", out JsonElement membersEl) && membersEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Member> memberList = new();
+                    List<Member> memberList = [];
                     foreach (JsonElement memberData in membersEl.EnumerateArray())
                     {
                         if (memberData.TryGetProperty("user", out JsonElement userData))
                         {
                             User user = ParseUser(userData);
                             string[] memberRoles = memberData.TryGetProperty("roles", out JsonElement rolesArr) && rolesArr.ValueKind == JsonValueKind.Array
-                                ? rolesArr.EnumerateArray().Select(x => x.GetString()!).Where(s => s is not null).ToArray()
+                                ? rolesArr.EnumerateArray().Select(static x => x.GetString()!).ToArray()
                                 : [];
                             string? nick = memberData.TryGetProperty("nick", out JsonElement nickEl) && nickEl.ValueKind != JsonValueKind.Null ? nickEl.GetString() : null;
 
@@ -473,7 +470,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
             {
                 int type = data.GetProperty("type").GetInt32(); // 2=command, 3=component, 5=modal submit
                 string id = data.GetProperty("id").GetString()!;
-                string token = data.GetProperty("token").GetString()!;
+                string interaction_token = data.GetProperty("token").GetString()!;
                 string appId = data.GetProperty("application_id").GetString()!;
                 string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) && gid.ValueKind != JsonValueKind.Null ? gid.GetString() : null;
                 string? channelId = data.TryGetProperty("channel_id", out JsonElement chIdEl) && chIdEl.ValueKind != JsonValueKind.Null ? chIdEl.GetString() : null;
@@ -495,7 +492,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                     JsonElement d = data.GetProperty("data");
                     string name = d.GetProperty("name").GetString()!;
                     string? sub = null;
-                    List<InteractionOption> options = new System.Collections.Generic.List<InteractionOption>();
+                    List<InteractionOption> options = [];
                     if (d.TryGetProperty("options", out JsonElement opts) && opts.ValueKind == JsonValueKind.Array)
                     {
                         if (opts.GetArrayLength() > 0)
@@ -552,7 +549,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                     InteractionCreateEvent evt = new()
                     {
                         Id = id,
-                        Token = token,
+                        Token = interaction_token,
                         ApplicationId = appId,
                         Type = InteractionType.ApplicationCommand,
                         GuildId = guildId,
@@ -571,7 +568,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                     string[]? values = null;
                     if (d.TryGetProperty("values", out JsonElement vEl) && vEl.ValueKind == JsonValueKind.Array)
                     {
-                        values = vEl.EnumerateArray().Select(x => x.GetString()!).Where(s => s is not null).ToArray();
+                        values = vEl.EnumerateArray().Select(static x => x.GetString()!).ToArray();
                     }
                     string? messageId = null;
                     if (data.TryGetProperty("message", out JsonElement msgEl) && msgEl.TryGetProperty("id", out JsonElement mid))
@@ -581,7 +578,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                     InteractionCreateEvent evt = new()
                     {
                         Id = id,
-                        Token = token,
+                        Token = interaction_token,
                         ApplicationId = appId,
                         Type = InteractionType.MessageComponent,
                         GuildId = guildId,
@@ -619,7 +616,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                     InteractionCreateEvent evt = new()
                     {
                         Id = id,
-                        Token = token,
+                        Token = interaction_token,
                         ApplicationId = appId,
                         Type = InteractionType.ModalSubmit,
                         GuildId = guildId,
@@ -636,8 +633,8 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
 
     public void Dispose()
     {
-        try { _heartbeatTimer?.Dispose(); } catch { }
-        try { _ws.Dispose(); } catch { }
+        try { _heartbeatTimer?.Dispose(); } catch { /* Timer disposal can throw, safe to ignore during cleanup */ }
+        try { _ws.Dispose(); } catch { /* WebSocket disposal can throw, safe to ignore during cleanup */ }
         _internalCts.Dispose();
     }
 }

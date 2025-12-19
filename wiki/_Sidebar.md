@@ -1,4 +1,4 @@
-### SimpleDiscordNet Wiki
+### SimpleDiscordDotNet Wiki
 
 **[🏠 Home](Home)**
 
@@ -7,40 +7,29 @@
 ### Getting Started
 - [Installation](Installation)
 - [Getting Started](Getting-Started)
-- [Dependency Injection](Dependency-Injection)
+- [Configuration](Configuration)
 
 ---
 
 ### Commands & Interactions
 - [Commands](Commands)
-- [Components & Modals](Components-and-Modals)
-- [Defer Attribute](Defer-Attribute)
+- [Embeds](Embeds)
 
 ---
 
-### Messages
-- [Messages & Embeds](Messages-and-Embeds)
-- [Reactions](Reactions)
-
----
-
-### Server Management
-- [Permissions & Roles](Permissions-and-Roles)
-- [Channels & Categories](Channels-and-Categories)
-- [Threads](Threads)
-- [Moderation](Moderation)
+### Examples
+- [Examples](Examples)
 
 ---
 
 ### Data & Events
-- [DiscordContext](DiscordContext)
 - [Events](Events)
 
 ---
 
 ### Advanced
+- [Performance Optimizations](Performance-Optimizations)
 - [Rate Limit Monitoring](Rate-Limit-Monitoring)
-- [AOT & Trimming](AOT-and-Trimming)
 - [API Reference](API-Reference)
 - [FAQ](FAQ)
 

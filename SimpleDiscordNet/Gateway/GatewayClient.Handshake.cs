@@ -16,8 +16,12 @@ internal sealed partial class GatewayClient
                 properties = new IdentifyConnectionProperties()
             }
         };
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(identify, json));
-        await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            JsonSerializer.Serialize(writer, identify, json);
+        }
+        await _ws.SendAsync(buffer.WrittenMemory, WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
     }
 
     private async Task ResumeAsync()
@@ -36,8 +40,12 @@ internal sealed partial class GatewayClient
                 seq = _seq
             }
         };
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(resume, json));
-        await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            JsonSerializer.Serialize(writer, resume, json);
+        }
+        await _ws.SendAsync(buffer.WrittenMemory, WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -57,7 +65,11 @@ internal sealed partial class GatewayClient
                 limit = 0 // 0 = no limit
             }
         };
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request, json));
-        await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        {
+            JsonSerializer.Serialize(writer, request, json);
+        }
+        await _ws.SendAsync(buffer.WrittenMemory, WebSocketMessageType.Text, true, CancellationToken.None).ConfigureAwait(false);
     }
 }

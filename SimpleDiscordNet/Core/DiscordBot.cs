@@ -10,6 +10,7 @@ using SimpleDiscordNet.Models;
 using SimpleDiscordNet.Models.Requests;
 using SimpleDiscordNet.Rest;
 using SimpleDiscordNet.Events;
+using SimpleDiscordNet.Primitives;
 
 namespace SimpleDiscordNet;
 
@@ -37,7 +38,6 @@ public sealed class DiscordBot : IDiscordBot
     private readonly bool _developmentMode;
     private readonly string[] _developmentGuildIds;
 
-    private readonly ConcurrentDictionary<string, object> _services = new();
     private readonly List<IGeneratedManifest> _generatedManifests = [];
 
     private volatile bool _started;
@@ -83,9 +83,9 @@ public sealed class DiscordBot : IDiscordBot
             Timeout = TimeSpan.FromSeconds(30)
         };
 
-        RateLimiter rateLimiter = new (timeProvider ?? TimeProvider.System);
+        RateLimiter rateLimiter = new(timeProvider ?? TimeProvider.System);
         _rest = new RestClient(httpClient, token, json, logger, rateLimiter);
-        _gateway = new GatewayClient(token, intents, json, logger, timeProvider ?? TimeProvider.System);
+        _gateway = new GatewayClient(token, intents, json);
         _slashCommands = new SlashCommandService(logger);
         _components = new ComponentService(logger);
 
@@ -96,7 +96,8 @@ public sealed class DiscordBot : IDiscordBot
     // Events are surfaced via static SimpleDiscordNet.Events.DiscordEvents
 
     /// <summary>
-    /// Starts the bot: connects to the gateway and begins processing events.
+    /// Starts the bot, connects to the gateway, and begins processing events.
+    /// Example: await bot.StartAsync();
     /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -171,10 +172,6 @@ public sealed class DiscordBot : IDiscordBot
         }
     }
 
-    // ---- Slash Commands ----
-
-    // Reflection-based auto registration removed for pure source-generator mode
-
     /// <summary>
     /// Synchronizes all registered slash commands to the specified guild ids.
     /// </summary>
@@ -186,7 +183,7 @@ public sealed class DiscordBot : IDiscordBot
         if (_generatedManifests.Count == 0)
             throw new InvalidOperationException("No generated command manifests were found. Ensure the source generator is referenced in the application project.");
 
-        var typed = _generatedManifests.SelectMany(m => m.Definitions).ToArray();
+        ApplicationCommandDefinition[] typed = _generatedManifests.SelectMany(m => m.Definitions).ToArray();
         object[] defs = typed.Cast<object>().ToArray();
         foreach (string gid in guildIds)
         {
@@ -201,7 +198,7 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public Task SendMessageAsync(string channelId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
     {
-        var payload = new CreateMessageRequest
+        CreateMessageRequest payload = new()
         {
             content = content,
             embeds = embed is null ? null : [embed.ToModel()]
@@ -214,7 +211,7 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public Task SendAttachmentAsync(string channelId, string content, string fileName, ReadOnlyMemory<byte> data, EmbedBuilder? embed = null, CancellationToken ct = default)
     {
-        var payload = new CreateMessageRequest
+        CreateMessageRequest payload = new()
         {
             content = content,
             embeds = embed is null ? null : [embed.ToModel()],
@@ -484,7 +481,7 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public Task<User[]?> GetReactionsAsync(string channelId, string messageId, string emoji, int limit = 25, CancellationToken ct = default)
     {
-        if (limit < 1 || limit > 100) throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100");
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100");
         string encoded = System.Web.HttpUtility.UrlEncode(emoji);
         return _rest.GetReactionsAsync<User[]>(channelId, messageId, encoded, limit, ct);
     }
@@ -614,15 +611,108 @@ public sealed class DiscordBot : IDiscordBot
     public Task RemoveThreadMemberAsync(string threadId, string userId, CancellationToken ct = default)
         => _rest.RemoveThreadMemberAsync(threadId, userId, ct);
 
+    // ---- Simplified Helper APIs for Beginners ----
+
+    /// <summary>
+    /// Sends a message with buttons to a channel.
+    /// Example: await bot.SendMessageWithButtonsAsync(channelId, "Click a button:", new Button("Yes", "yes_id"), new Button("No", "no_id"));
+    /// </summary>
+    public Task SendMessageWithButtonsAsync(string channelId, string content, params Button[] buttons)
+    {
+        CreateMessageRequest payload = new()
+        {
+            content = content,
+            components = [new ActionRow(buttons.Cast<object>().ToArray())]
+        };
+        return _rest.PostAsync($"/channels/{channelId}/messages", payload, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Sends an embed-only message to a channel.
+    /// Example: await bot.SendEmbedAsync(channelId, new EmbedBuilder().WithTitle("Title").WithDescription("Description"));
+    /// </summary>
+    public Task SendEmbedAsync(string channelId, EmbedBuilder embed, CancellationToken ct = default)
+        => SendMessageAsync(channelId, string.Empty, embed, ct);
+
+    /// <summary>
+    /// Gets a member from a guild by user ID.
+    /// Example: var member = await bot.GetMemberAsync(guildId, userId);
+    /// </summary>
+    public Task<Member?> GetMemberAsync(string guildId, string userId, CancellationToken ct = default)
+        => _rest.GetAsync<Member>($"/guilds/{guildId}/members/{userId}", ct);
+
+    /// <summary>
+    /// Gets a channel by ID.
+    /// Example: var channel = await bot.GetChannelAsync(channelId);
+    /// </summary>
+    public Task<Channel?> GetChannelAsync(string channelId, CancellationToken ct = default)
+        => _rest.GetAsync<Channel>($"/channels/{channelId}", ct);
+
+    /// <summary>
+    /// Gets information about the bot's application.
+    /// Example: var app = await bot.GetApplicationInfoAsync();
+    /// </summary>
+    public Task<ApplicationInfo?> GetApplicationInfoAsync(CancellationToken ct = default)
+        => _rest.GetApplicationAsync(ct);
+
+    /// <summary>
+    /// Updates the bot's nickname in a guild.
+    /// Example: await bot.SetNicknameAsync(guildId, "CoolBot");
+    /// </summary>
+    public Task SetNicknameAsync(string guildId, string nickname, CancellationToken ct = default)
+    {
+        var payload = new { nick = nickname };
+        return _rest.PatchAsync($"/guilds/{guildId}/members/@me", payload, ct);
+    }
+
+    /// <summary>
+    /// Checks if a member has a specific role.
+    /// Example: bool hasRole = await bot.MemberHasRoleAsync(guildId, userId, roleId);
+    /// </summary>
+    public async Task<bool> MemberHasRoleAsync(string guildId, string userId, string roleId, CancellationToken ct = default)
+    {
+        Member? member = await GetMemberAsync(guildId, userId, ct).ConfigureAwait(false);
+        return member?.HasRole(roleId) ?? false;
+    }
+
+    /// <summary>
+    /// Gets the @everyone role for a guild.
+    /// Example: var everyoneRole = await bot.GetEveryoneRoleAsync(guildId);
+    /// </summary>
+    public async Task<Role?> GetEveryoneRoleAsync(string guildId, CancellationToken ct = default)
+    {
+        Role[]? roles = await GetGuildRolesAsync(guildId, ct).ConfigureAwait(false);
+        return roles?.FirstOrDefault(r => r.Id == guildId);
+    }
+
+    /// <summary>
+    /// Sends a direct message to a user by creating a DM channel and sending a message.
+    /// Example: await bot.SendDMAsync(userId, "Hello!");
+    /// </summary>
+    public async Task SendDMAsync(string userId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+    {
+        // Create DM channel first
+        var dmPayload = new { recipient_id = userId };
+
+        // Create the DM channel - Discord will return the existing one if it exists
+        Channel? dmChannel = await _rest.PostAsync<Channel>("/users/@me/channels", dmPayload, ct).ConfigureAwait(false);
+
+        if (dmChannel is not null)
+        {
+            await SendMessageAsync(dmChannel.Id, content, embed, ct).ConfigureAwait(false);
+        }
+    }
+
     private void OnInteractionCreate(object? sender, InteractionCreateEvent e)
     {
-        if (e is { Type: InteractionType.ApplicationCommand, Data: not null })
+        switch (e)
         {
-            _ = _slashCommands.HandleAsync(e, _rest, _cts.Token);
-        }
-        else if (e is { Type: InteractionType.MessageComponent, Component: not null } or { Type: InteractionType.ModalSubmit, Modal: not null })
-        {
-            _ = _components.HandleAsync(e, _rest, _cts.Token);
+            case { Type: InteractionType.ApplicationCommand, Data: not null }:
+                _ = _slashCommands.HandleAsync(e, _rest, _cts.Token);
+                break;
+            case { Type: InteractionType.MessageComponent, Component: not null } or { Type: InteractionType.ModalSubmit, Modal: not null }:
+                _ = _components.HandleAsync(e, _rest, _cts.Token);
+                break;
         }
     }
 
@@ -635,16 +725,18 @@ public sealed class DiscordBot : IDiscordBot
         _gateway.Connected += (_, __) => DiscordEvents.RaiseConnected(this);
         _gateway.Disconnected += (_, ex) => DiscordEvents.RaiseDisconnected(this, ex);
         _gateway.Error += (_, ex) => DiscordEvents.RaiseError(this, ex);
+        
         // Direct messages
         _gateway.MessageCreate += (_, msg) =>
         {
             // DM when no guild id present
             if (msg.GuildId is null)
             {
-                var ctx = new CommandContext(msg.ChannelId, msg, _rest);
+                CommandContext ctx = new(msg.ChannelId, msg, _rest);
                 DiscordEvents.RaiseDirectMessageReceived(this, new DirectMessageEvent { Message = msg, Context = ctx });
             }
         };
+        
         // Slash interactions
         _gateway.InteractionCreate += OnInteractionCreate;
 
@@ -819,17 +911,11 @@ public sealed class DiscordBot : IDiscordBot
             _logger.Log(LogLevel.Debug, $"Received member chunk {e.ChunkIndex + 1}/{e.ChunkCount} for guild {e.GuildId} ({e.Members.Length} members)");
 
             // Check if this was the last chunk
-            if (e.ChunkIndex == e.ChunkCount - 1)
+            if (e.ChunkIndex == e.ChunkCount - 1 && _pendingMemberChunks.TryRemove(e.GuildId, out int _) && _cache.TryGetGuild(e.GuildId, out Guild guild))
             {
                 // All member chunks received, mark guild as ready
-                if (_pendingMemberChunks.TryRemove(e.GuildId, out int _))
-                {
-                    if (_cache.TryGetGuild(e.GuildId, out Guild guild))
-                    {
-                        _logger.Log(LogLevel.Information, $"Guild {guild.Name} ({e.GuildId}) is fully loaded");
-                        DiscordEvents.RaiseGuildReady(this, new GuildEvent { Guild = guild });
-                    }
-                }
+                _logger.Log(LogLevel.Information, $"Guild {guild.Name} ({e.GuildId}) is fully loaded");
+                DiscordEvents.RaiseGuildReady(this, new GuildEvent { Guild = guild });
             }
         };
 
@@ -875,7 +961,7 @@ public sealed class DiscordBot : IDiscordBot
     }
 
     /// <summary>
-    /// Disposes managed resources. Prefer <see cref="DisposeAsync"/> when possible.
+    /// Disposes of managed resources. Prefer <see cref="DisposeAsync"/> when possible.
     /// </summary>
     public void Dispose()
     {
@@ -896,7 +982,7 @@ public sealed class DiscordBot : IDiscordBot
         if (options is null) throw new ArgumentNullException(nameof(options));
         if (string.IsNullOrWhiteSpace(options.Token)) throw new InvalidOperationException("Token is required");
 
-        DiscordBot bot = new DiscordBot(
+        DiscordBot bot = new(
             options.Token,
             options.Intents,
             options.JsonOptions,
@@ -1064,10 +1150,10 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public void RegisterGeneratedHandlers(IGeneratedManifest manifest)
     {
-        if (manifest is null) throw new ArgumentNullException(nameof(manifest));
+        ArgumentNullException.ThrowIfNull(manifest);
         _generatedManifests.Add(manifest);
         _slashCommands.RegisterGeneratedManifest(manifest);
-        foreach (var ch in manifest.Components)
+        foreach (ComponentHandler ch in manifest.Components)
             _components.RegisterGenerated(ch);
     }
 

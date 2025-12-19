@@ -30,6 +30,6 @@ public sealed class NativeLogger
         if (level < _minLevel) return;
         LogMessage msg = new(DateTimeOffset.UtcNow, level, message, exception);
         Logged?.Invoke(this, msg);
-        try { _sink?.Invoke(msg); } catch { }
+        try { _sink?.Invoke(msg); } catch { /* Swallow sink errors to prevent cascading failures */ }
     }
 }

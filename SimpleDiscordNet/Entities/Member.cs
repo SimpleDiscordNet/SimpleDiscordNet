@@ -46,8 +46,7 @@ public sealed record Member
     /// <param name="format">Image format (png, jpg, webp, gif)</param>
     public string? GetGuildAvatarUrl(string guildId, int size = 256, string format = "png")
     {
-        if (string.IsNullOrEmpty(Avatar)) return null;
-        return $"https://cdn.discordapp.com/guilds/{guildId}/users/{User.Id}/avatars/{Avatar}.{format}?size={size}";
+        return string.IsNullOrEmpty(Avatar) ? null : $"https://cdn.discordapp.com/guilds/{guildId}/users/{User.Id}/avatars/{Avatar}.{format}?size={size}";
     }
 
     /// <summary>

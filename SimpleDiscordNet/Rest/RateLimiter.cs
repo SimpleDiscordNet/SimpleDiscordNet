@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Threading;
 
 namespace SimpleDiscordNet.Rest;
 
@@ -7,13 +6,12 @@ namespace SimpleDiscordNet.Rest;
 /// Rate limiter with bucket management, global limiting, and request queuing.
 /// Ensures no messages are lost while respecting Discord's rate limits.
 /// </summary>
-internal sealed class RateLimiter
+internal sealed class RateLimiter : IDisposable
 {
     private readonly TimeProvider _time;
     private readonly ConcurrentDictionary<string, RateLimitBucket> _buckets = new();
     private readonly SemaphoreSlim _globalLimiter;
     private readonly Timer _globalResetTimer;
-    private readonly ConcurrentQueue<PendingRequest> _globalQueue = new();
 
     // Global rate limit: 50 requests per second
     private const int GlobalLimit = 50;
@@ -42,7 +40,7 @@ internal sealed class RateLimiter
 
         // Get or create bucket for this route (will be updated with actual bucket ID from headers)
         string bucketKey = GetBucketKey(route);
-        RateLimitBucket bucket = _buckets.GetOrAdd(bucketKey, key => new RateLimitBucket(key, route, _time));
+        RateLimitBucket bucket = _buckets.GetOrAdd(bucketKey, static (key, arg) => new RateLimitBucket(key, arg.route, arg.time), (route, time: _time));
 
         // Acquire slot in the bucket
         IDisposable bucketLease = await bucket.AcquireAsync(ct).ConfigureAwait(false);
@@ -64,7 +62,7 @@ internal sealed class RateLimiter
 
         // Get the appropriate bucket
         string bucketKey = bucketId ?? GetBucketKey(route);
-        RateLimitBucket bucket = _buckets.GetOrAdd(bucketKey, key => new RateLimitBucket(key, route, _time));
+        RateLimitBucket bucket = _buckets.GetOrAdd(bucketKey, static (key, arg) => new RateLimitBucket(key, arg.route, arg.time), (route, time: _time));
 
         // If we got a bucket ID from Discord, migrate the route to use that bucket
         if (bucketId != null && bucketId != GetBucketKey(route))
@@ -91,7 +89,7 @@ internal sealed class RateLimiter
             }
         }
 
-        RateLimitBucket bucket = _buckets.GetOrAdd(bucketKey, key => new RateLimitBucket(key, route, _time));
+        RateLimitBucket bucket = _buckets.GetOrAdd(bucketKey, static (key, arg) => new RateLimitBucket(key, arg.route, arg.time), (route, time: _time));
         await bucket.Handle429Async(response, ct).ConfigureAwait(false);
     }
 
@@ -165,11 +163,9 @@ internal sealed class RateLimiter
         lock (_globalLock)
         {
             DateTimeOffset now = _time.GetUtcNow();
-            if (now >= _globalResetAt)
-            {
-                _globalRemaining = GlobalLimit;
-                _globalResetAt = now.AddSeconds(1);
-            }
+            if (now < _globalResetAt) return;
+            _globalRemaining = GlobalLimit;
+            _globalResetAt = now.AddSeconds(1);
         }
     }
 
@@ -186,6 +182,12 @@ internal sealed class RateLimiter
         public required string Route { get; init; }
         public required TaskCompletionSource<bool> CompletionSource { get; init; }
         public required CancellationToken CancellationToken { get; init; }
+    }
+
+    public void Dispose()
+    {
+        _globalResetTimer.Dispose();
+        _globalLimiter.Dispose();
     }
 }
 

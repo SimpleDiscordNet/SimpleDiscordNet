@@ -8,9 +8,11 @@ public readonly struct DiscordColor(int value)
     public readonly int Value = value;
 
     public static DiscordColor FromRgb(byte r, byte g, byte b) => new((r << 16) | (g << 8) | b);
+
     /// <summary>
     /// Creates a color from RGB component values (0-255).
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
     public static DiscordColor FromRgb(int r, int g, int b)
     {
         if ((uint)r > 255u || (uint)g > 255u || (uint)b > 255u)
@@ -21,27 +23,46 @@ public readonly struct DiscordColor(int value)
     /// <summary>
     /// Creates a color from a hex string.
     /// Supports formats: "#RRGGBB", "0xRRGGBB", "RRGGBB", and shorthand "#RGB".
+    /// Example: DiscordColor.FromHex("#FF5733")
     /// </summary>
     public static DiscordColor FromHex(string hex)
     {
         if (hex is null) throw new ArgumentNullException(nameof(hex));
+        return FromHex(hex.AsSpan());
+    }
+
+    /// <summary>
+    /// Creates a color from a hex string span (zero-allocation).
+    /// Supports formats: "#RRGGBB", "0xRRGGBB", "RRGGBB", and shorthand "#RGB".
+    /// Example: DiscordColor.FromHex("#FF5733".AsSpan())
+    /// </summary>
+    public static DiscordColor FromHex(ReadOnlySpan<char> hex)
+    {
         hex = hex.Trim();
         if (hex.StartsWith("#")) hex = hex[1..];
-        else if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
+        else if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase) || hex.StartsWith("0X", StringComparison.OrdinalIgnoreCase))
+            hex = hex[2..];
 
         if (hex.Length == 3)
         {
             // Shorthand #RGB -> #RRGGBB
-            var r = Convert.ToInt32(new string(hex[0], 2), 16);
-            var g = Convert.ToInt32(new string(hex[1], 2), 16);
-            var b = Convert.ToInt32(new string(hex[2], 2), 16);
+            Span<char> expanded = stackalloc char[2];
+            expanded[0] = hex[0];
+            expanded[1] = hex[0];
+            int r = int.Parse(expanded, System.Globalization.NumberStyles.HexNumber);
+            expanded[0] = hex[1];
+            expanded[1] = hex[1];
+            int g = int.Parse(expanded, System.Globalization.NumberStyles.HexNumber);
+            expanded[0] = hex[2];
+            expanded[1] = hex[2];
+            int b = int.Parse(expanded, System.Globalization.NumberStyles.HexNumber);
             return FromRgb((byte)r, (byte)g, (byte)b);
         }
 
         if (hex.Length != 6)
             throw new FormatException("Hex color must have 3 or 6 hex digits.");
 
-        var value = Convert.ToInt32(hex, 16);
+        int value = int.Parse(hex, System.Globalization.NumberStyles.HexNumber);
         return new DiscordColor(value);
     }
 

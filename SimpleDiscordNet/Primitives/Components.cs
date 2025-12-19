@@ -165,7 +165,7 @@ public sealed class ChannelSelect : IComponent
         this.min_values = min;
         this.max_values = max;
         this.disabled = disabled ? true : null;
-        this.channel_types = channelTypes?.Select(ct => (int)ct).ToArray();
+        this.channel_types = channelTypes?.Select(static ct => (int)ct).ToArray();
     }
 }
 

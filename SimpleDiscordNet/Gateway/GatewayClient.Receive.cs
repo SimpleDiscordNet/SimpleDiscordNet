@@ -7,9 +7,9 @@ internal sealed partial class GatewayClient
 {
     private async Task ReceiveLoop(CancellationToken ct)
     {
-        byte[] buffer = new byte[1 << 16];
-        System.Text.StringBuilder sb = new(4096);
-        ArraySegment<byte> seg = new(buffer);
+        byte[] buffer = new byte[65536];
+        using var memoryStream = new System.IO.MemoryStream(4096);
+        ArraySegment<byte> seg = buffer;
         try
         {
             while (!ct.IsCancellationRequested)
@@ -20,7 +20,7 @@ internal sealed partial class GatewayClient
                     await SafeReconnectAsync(ct).ConfigureAwait(false);
                     if (_ws.State != WebSocketState.Open) break;
                 }
-                sb.Clear();
+                memoryStream.SetLength(0);
                 WebSocketReceiveResult? result;
                 do
                 {
@@ -37,11 +37,11 @@ internal sealed partial class GatewayClient
                         // continue to next iteration with new socket
                         goto ContinueLoop;
                     }
-                    sb.Append(System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count));
+                    memoryStream.Write(buffer.AsSpan(0, result.Count));
                 } while (!result.EndOfMessage);
 
-                string json1 = sb.ToString();
-                GatewayPayload? payload = JsonSerializer.Deserialize<GatewayPayload>(json1, json);
+                ReadOnlySpan<byte> jsonBytes = memoryStream.GetBuffer().AsSpan(0, (int)memoryStream.Length);
+                GatewayPayload? payload = JsonSerializer.Deserialize<GatewayPayload>(jsonBytes, json);
                 if (payload == null) continue;
                 if (payload.s.HasValue) _seq = payload.s.Value;
 
@@ -75,8 +75,8 @@ internal sealed partial class GatewayClient
                         break;
                     case 9: // INVALID_SESSION
                         bool canResume = false;
-                        try { canResume = payload.d.ValueKind == JsonValueKind.True || (payload.d.ValueKind == JsonValueKind.False ? false : payload.d.GetBoolean()); }
-                        catch { }
+                        try { canResume = payload.d.ValueKind == JsonValueKind.True || (payload.d.ValueKind != JsonValueKind.False && payload.d.GetBoolean()); }
+                        catch { /* Invalid session data format, default to false */ }
                         // Random jitter 1-5s as per Discord suggestion
                         int delay = _rand.Next(1000, 5000);
                         await Task.Delay(delay, ct).ConfigureAwait(false);
@@ -99,7 +99,7 @@ internal sealed partial class GatewayClient
             Error?.Invoke(this, ex);
             if (_autoReconnect && !ct.IsCancellationRequested)
             {
-                try { await SafeReconnectAsync(ct).ConfigureAwait(false); } catch { }
+                try { await SafeReconnectAsync(ct).ConfigureAwait(false); } catch { /* Reconnection failed, will retry on next loop */ }
                 // After reconnection, loop continues
                 if (!ct.IsCancellationRequested) await ReceiveLoop(ct).ConfigureAwait(false);
             }
