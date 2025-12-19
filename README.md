@@ -94,7 +94,7 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTI
 
 ## Version History
 
-### v1.2.1 - Sharding Support (2025-12-19)
+### v1.3.0 - Sharding Support (2025-12-19)
 - ✅ Added 3-mode sharding system: single process, multi-shard, distributed
 - ✅ Distributed coordinator/worker architecture with auto-discovery
 - ✅ Health monitoring, load balancing, coordinator succession
