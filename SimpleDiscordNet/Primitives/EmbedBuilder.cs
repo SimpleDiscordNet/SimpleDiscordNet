@@ -43,8 +43,16 @@ public sealed class EmbedBuilder
     public (string name, string? url, string? iconUrl)? Author { get; private set; }
     /// <summary>Thumbnail image URL.</summary>
     public string? ThumbnailUrl { get; private set; }
+    /// <summary>Thumbnail width.</summary>
+    public int? ThumbnailWidth { get; private set; }
+    /// <summary>Thumbnail height.</summary>
+    public int? ThumbnailHeight { get; private set; }
     /// <summary>Main image URL.</summary>
     public string? ImageUrl { get; private set; }
+    /// <summary>Main image width.</summary>
+    public int? ImageWidth { get; private set; }
+    /// <summary>Main image height.</summary>
+    public int? ImageHeight { get; private set; }
     /// <summary>Embed fields.</summary>
     public List<(string name, string value, bool inline)> Fields { get; } = [];
 
@@ -68,14 +76,26 @@ public sealed class EmbedBuilder
     public EmbedBuilder WithAuthor(string name, string? url = null, string? iconUrl = null) { Author = (name, url, iconUrl); return this; }
     /// <summary>Clears the author.</summary>
     public EmbedBuilder ClearAuthor() { Author = null; return this; }
-    /// <summary>Sets a thumbnail image URL.</summary>
-    public EmbedBuilder WithThumbnail(string url) { ThumbnailUrl = url; return this; }
+    /// <summary>Sets a thumbnail image URL with optional width and height.</summary>
+    public EmbedBuilder WithThumbnail(string url, int? width = null, int? height = null)
+    {
+        ThumbnailUrl = url;
+        ThumbnailWidth = width;
+        ThumbnailHeight = height;
+        return this;
+    }
     /// <summary>Clears the thumbnail.</summary>
-    public EmbedBuilder ClearThumbnail() { ThumbnailUrl = null; return this; }
-    /// <summary>Sets a main image URL.</summary>
-    public EmbedBuilder WithImage(string url) { ImageUrl = url; return this; }
+    public EmbedBuilder ClearThumbnail() { ThumbnailUrl = null; ThumbnailWidth = null; ThumbnailHeight = null; return this; }
+    /// <summary>Sets a main image URL with optional width and height.</summary>
+    public EmbedBuilder WithImage(string url, int? width = null, int? height = null)
+    {
+        ImageUrl = url;
+        ImageWidth = width;
+        ImageHeight = height;
+        return this;
+    }
     /// <summary>Clears the image.</summary>
-    public EmbedBuilder ClearImage() { ImageUrl = null; return this; }
+    public EmbedBuilder ClearImage() { ImageUrl = null; ImageWidth = null; ImageHeight = null; return this; }
     /// <summary>Adds a field.</summary>
     public EmbedBuilder AddField(string name, string value, bool inline = false) { Fields.Add((name, value, inline)); return this; }
     /// <summary>Adds multiple fields.</summary>
@@ -83,7 +103,7 @@ public sealed class EmbedBuilder
     /// <summary>Clears all fields.</summary>
     public EmbedBuilder ClearFields() { Fields.Clear(); return this; }
 
-    internal Embed ToModel()
+    internal Embed Build()
     {
         Embed model = new()
         {
@@ -94,8 +114,8 @@ public sealed class EmbedBuilder
             color = Color?.Value,
             footer = Footer is null ? null : new EmbedFooter { text = Footer.Value.text, icon_url = Footer.Value.iconUrl },
             author = Author is null ? null : new EmbedAuthor { name = Author.Value.name, url = Author.Value.url, icon_url = Author.Value.iconUrl },
-            thumbnail = ThumbnailUrl is null ? null : new EmbedThumbnail { url = ThumbnailUrl },
-            image = ImageUrl is null ? null : new EmbedImage { url = ImageUrl },
+            thumbnail = ThumbnailUrl is null ? null : new EmbedThumbnail { url = ThumbnailUrl, width = ThumbnailWidth, height = ThumbnailHeight },
+            image = ImageUrl is null ? null : new EmbedImage { url = ImageUrl, width = ImageWidth, height = ImageHeight },
             fields = Fields.Count == 0 ? null : Fields.Select(static f => new EmbedField { name = f.name, value = f.value, inline = f.inline ? true : null }).ToArray()
         };
         return model;

@@ -1,4 +1,4 @@
-# Welcome to SimpleDiscordDotNet
+# Welcome to SimpleDiscordDotNet v1.4.0
 
 A lightweight, dependency-free Discord bot SDK for .NET 10 that provides direct access to Discord API v10 (REST + Gateway).
 
@@ -27,9 +27,11 @@ dotnet add package SimpleDiscordDotNet
 - **Builder pattern** and DI-friendly
 - **Global static event hub** for logs and domain events
 - **Source generator** for zero-reflection command/component discovery
-- **Native AOT compatible** - Full trimming and AOT support
+- **Native AOT compatible** - Full trimming and AOT support with 100% zero reflection
 - **Memory-optimized** - Span<T> and Memory<T> APIs for 30-50% less GC pressure
-- **🆕 Horizontal sharding** - 3 modes: single process, multi-shard, or distributed coordinator/worker
+- **Horizontal sharding** - 3 modes: single process, multi-shard, or distributed coordinator/worker
+- **🆕 Enhanced InteractionContext** - Direct Member and Guild access without cache lookups
+- **🆕 HTTPS-secured sharding** - TLS 1.3+ for distributed coordinator communication
 
 ### Rich Discord API v10 Support
 - **Messages:** send, edit, delete, bulk delete, pin/unpin
@@ -76,7 +78,7 @@ dotnet add package SimpleDiscordDotNet
 - **[Events](Events)** - Handling Discord gateway events
 
 ### Advanced Topics
-- **[Sharding](Sharding)** - **🆕** Horizontal scaling with distributed coordinator/worker architecture
+- **[Sharding](Sharding)** - Horizontal scaling with distributed coordinator/worker architecture
 - **[Performance Optimizations](Performance-Optimizations)** - Memory and CPU optimization techniques
 - **[Rate Limit Monitoring](Rate-Limit-Monitoring)** - Advanced rate limiting with monitoring
 - **[API Reference](API-Reference)** - Quick method reference
@@ -100,7 +102,11 @@ public sealed class MyCommands
         [CommandOption("style", "Greeting style", Choices = "Friendly:👋,Formal:🤝,Casual:✌️")]
         string style)
     {
-        await ctx.RespondAsync($"{style} Hello, {name}!", ephemeral: true);
+        // ✨ NEW in v1.4.0: Direct access to Member and Guild
+        string memberName = ctx.Member?.User.Username ?? "Unknown";
+        string guildName = ctx.Guild?.Name ?? "DM";
+
+        await ctx.RespondAsync($"{style} Hello, {name}! Called by {memberName} in {guildName}", ephemeral: true);
     }
 }
 
@@ -124,8 +130,48 @@ SimpleDiscordDotNet is designed with these principles:
 2. **Zero Dependencies** - No external packages, only BCL
 3. **Performance** - Memory-optimized with Span<T>, Memory<T>, and zero-allocation APIs
 4. **Modern C#** - Built with C# 14 and .NET 10 features including span-based APIs
-5. **AOT Ready** - Compatible with Native AOT compilation
+5. **AOT Ready** - Compatible with Native AOT compilation with 100% zero reflection
 6. **Well Documented** - Every public method has XML docs with examples
+
+## 🆕 What's New in v1.4.0
+
+### Enhanced InteractionContext
+All interactive contexts now contain **Member** and **Guild** objects directly, eliminating the need for cache lookups:
+
+```csharp
+[SlashCommand("info", "Get info about your context")]
+public async Task InfoAsync(InteractionContext ctx)
+{
+    // Direct access - no cache lookups needed!
+    DiscordMember? member = ctx.Member; // DiscordMember object
+    DiscordGuild? guild = ctx.Guild;    // DiscordGuild object
+    DiscordChannel? channel = ctx.Channel; // Still available from cache
+
+    await ctx.RespondAsync($"You: {member?.User.Username}, Guild: {guild?.Name}");
+}
+```
+
+### HTTPS-Secured Sharding
+Distributed sharding now uses HTTPS with TLS 1.3+ for secure coordinator/worker communication:
+
+```csharp
+// Coordinator with HTTPS (default port changed to 8443)
+DiscordBot coordinator = DiscordBot.NewBuilder()
+    .WithToken(token)
+    .WithSharding(ShardMode.Distributed, workerListenUrl: "https://+:8443/")
+    .Build();
+```
+
+**Important:** For production deployments, configure SSL certificates or use a TLS-terminating reverse proxy (nginx, Caddy, etc.).
+
+### 100% Zero Reflection
+All anonymous objects have been replaced with strongly-typed classes for complete AoT compatibility:
+- `MessagePayload` for message building
+- `BulkDeleteMessagesRequest` for bulk operations
+- `BanMemberRequest` for moderation
+- `HttpErrorResponse` for error handling
+
+All payloads are registered in `DiscordJsonContext` for source-generated JSON serialization.
 
 ## 🤝 Contributing
 

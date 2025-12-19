@@ -261,14 +261,49 @@ public class ProcessCommand
 
 ## Context Object
 
-The `InteractionContext` provides:
+The `InteractionContext` provides access to all interaction-related data:
 
-- `Bot` - Access to the bot instance
-- `Interaction` - Raw interaction data
-- `Guild` - Current guild (if in guild)
-- `Channel` - Current channel
-- `User` - User who invoked command
-- `Member` - Member object (if in guild)
+### Core Properties
+
+- `InteractionId` - Unique interaction identifier
+- `InteractionToken` - Token for followup messages
+- `ApplicationId` - Bot's application ID
+- `GuildId` - Guild ID (if in guild, otherwise null)
+- `ChannelId` - Channel ID where interaction occurred
+
+### 🆕 v1.4.0: Direct Entity Access
+
+**Member and Guild objects are now provided directly without cache lookups:**
+
+```csharp
+[SlashCommand("whoami", "Get your info")]
+public async Task WhoAmIAsync(InteractionContext ctx)
+{
+    // Direct access to Member - no cache lookup needed!
+    DiscordMember? member = ctx.Member;
+    if (member is not null)
+    {
+        string username = member.User.Username;
+        ulong[] roles = member.Roles;
+        string? nickname = member.Nick;
+
+        await ctx.RespondAsync($"You are {username} (Nick: {nickname ?? "None"}), {roles.Length} roles");
+    }
+
+    // Direct access to Guild - no cache lookup needed!
+    DiscordGuild? guild = ctx.Guild;
+    if (guild is not null)
+    {
+        await ctx.RespondAsync($"In guild: {guild.Name}");
+    }
+}
+```
+
+### Cache-Based Properties
+
+- `Channel` - Current channel (from cache)
+
+**Note:** Member and Guild are null for DM interactions.
 
 ## Response Methods
 

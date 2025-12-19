@@ -5,14 +5,14 @@ namespace SimpleDiscordNet.Models.Context;
 /// <summary>
 /// A role enriched with its guild context.
 /// </summary>
-public sealed record RoleWithGuild(Role Role, Guild Guild)
+public sealed record RoleWithGuild(DiscordRole Role, DiscordGuild Guild)
 {
-    public string Id => Role.Id;
+    public ulong Id => Role.Id;
     public string Name => Role.Name;
     public int Color => Role.Color;
     public int Position => Role.Position;
-    public string? Permissions => Role.Permissions;
-    public string GuildId => Guild.Id;
+    public ulong Permissions => Role.Permissions;
+    public ulong GuildId => Guild.Id;
     public string GuildName => Guild.Name;
 
     /// <summary>Checks if this role has a specific permission</summary>

@@ -15,7 +15,7 @@ internal sealed class PeerNode
 
     public string ProcessId { get; }
     public string Url { get; }
-    public List<int> AssignedShards { get; } = new();
+    public List<int> AssignedShards { get; } = [];
     public int? MaxShards { get; set; }
 
     public PeerNode(string processId, string url)
@@ -105,17 +105,14 @@ internal sealed class PeerNode
     /// </summary>
     public static PeerNode FromState(PeerNodeState state)
     {
-        var peer = new PeerNode(state.ProcessId, state.Url);
+        PeerNode peer = new(state.ProcessId, state.Url);
         lock (peer._heartbeatLock)
         {
             peer._lastHeartbeat = state.LastHeartbeat;
         }
         peer._latestMetrics = state.Metrics;
         peer.MaxShards = state.MaxShards;
-        if (state.Shards != null)
-        {
-            peer.AssignedShards.AddRange(state.Shards);
-        }
+        peer.AssignedShards.AddRange(state.Shards);
         return peer;
     }
 }

@@ -7,6 +7,6 @@ namespace SimpleDiscordNet.Events;
 /// </summary>
 internal sealed record GatewayMemberEvent
 {
-    public required string GuildId { get; init; }
-    public required Member Member { get; init; }
+    public required ulong GuildId { get; init; }
+    public required DiscordMember Member { get; init; }
 }

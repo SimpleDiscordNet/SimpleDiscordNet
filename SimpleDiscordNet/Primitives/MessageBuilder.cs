@@ -1,3 +1,4 @@
+using SimpleDiscordNet.Models;
 using SimpleDiscordNet.Primitives;
 
 namespace SimpleDiscordNet;
@@ -12,6 +13,7 @@ public sealed class MessageBuilder
     private EmbedBuilder? _embed;
     private List<EmbedBuilder>? _embeds;
     private List<IComponent>? _components;
+    private MentionBuilder? _mentionBuilder;
 
     /// <summary>
     /// Sets the message text content.
@@ -73,7 +75,7 @@ public sealed class MessageBuilder
     public MessageBuilder WithButtons(params Button[] buttons)
     {
         _components ??= [];
-        foreach (var btn in buttons)
+        foreach (Button btn in buttons)
             _components.Add(btn);
         return this;
     }
@@ -100,33 +102,62 @@ public sealed class MessageBuilder
     }
 
     /// <summary>
+    /// Sets mention behavior using a MentionBuilder.
+    /// Example: builder.WithMention(MentionBuilder.User(userId));
+    /// </summary>
+    public MessageBuilder WithMention(MentionBuilder mentionBuilder)
+    {
+        _mentionBuilder = mentionBuilder;
+        return this;
+    }
+
+    /// <summary>
+    /// Enables @everyone mentions.
+    /// </summary>
+    public MessageBuilder WithEveryoneMention()
+    {
+        _mentionBuilder = MentionBuilder.Everyone();
+        return this;
+    }
+
+    /// <summary>
+    /// Disables all mentions.
+    /// </summary>
+    public MessageBuilder WithNoMentions()
+    {
+        _mentionBuilder = MentionBuilder.None();
+        return this;
+    }
+
+    /// <summary>
     /// Builds the message payload for sending via the Discord API.
     /// </summary>
-    internal object Build()
+    internal MessagePayload Build()
     {
-        List<object> embedList = [];
+        List<Embed> embedList = [];
         if (_embed is not null)
-            embedList.Add(_embed.ToModel());
+            embedList.Add(_embed.Build());
         if (_embeds is not null)
         {
-            foreach (var e in _embeds)
-                embedList.Add(e.ToModel());
+            foreach (EmbedBuilder e in _embeds)
+                embedList.Add(e.Build());
         }
 
         object[]? components = null;
         if (_components is not null && _components.Count > 0)
         {
-            var componentArray = new object[_components.Count];
+            object[] componentArray = new object[_components.Count];
             for (int i = 0; i < _components.Count; i++)
                 componentArray[i] = _components[i];
             components = [new ActionRow(componentArray)];
         }
 
-        return new
+        return new MessagePayload
         {
             content = _content,
             embeds = embedList.Count > 0 ? embedList.ToArray() : null,
-            components
+            components = components,
+            allowed_mentions = _mentionBuilder?.BuildAllowedMentions()
         };
     }
 
@@ -144,6 +175,7 @@ public sealed class MessageBuilder
         _embed = null;
         _embeds?.Clear();
         _components?.Clear();
+        _mentionBuilder = null;
         return this;
     }
 }

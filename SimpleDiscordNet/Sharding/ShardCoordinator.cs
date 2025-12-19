@@ -115,16 +115,18 @@ internal sealed class ShardCoordinator : IDisposable
             return;
         }
 
-        var peer = new PeerNode(request.ProcessId, request.ListenUrl);
-        peer.MaxShards = request.MaxShards;
+        PeerNode peer = new(request.ProcessId, request.ListenUrl)
+        {
+            MaxShards = request.MaxShards
+        };
         _peers.AddOrUpdate(request.ProcessId, peer, (_, old) => peer);
 
-        var position = _succession.AddWorker(request.ProcessId, request.ListenUrl, false);
+        int position = _succession.AddWorker(request.ProcessId, request.ListenUrl, false);
 
         // Auto-assign shards
         AssignShardsToWorker(peer);
 
-        var response = new WorkerRegistrationResponse(
+        WorkerRegistrationResponse response = new(
             AssignedShards: peer.AssignedShards.ToList(),
             TotalShards: _totalShards,
             SuccessionPosition: position,
@@ -146,8 +148,8 @@ internal sealed class ShardCoordinator : IDisposable
     private void AssignShardsToWorker(PeerNode peer)
     {
         // Find unassigned shards
-        var assignedShards = new HashSet<int>(_peers.Values.SelectMany(p => p.AssignedShards));
-        var unassigned = Enumerable.Range(0, _totalShards).Where(s => !assignedShards.Contains(s)).ToArray();
+        HashSet<int> assignedShards = new(_peers.Values.SelectMany(p => p.AssignedShards));
+        int[] unassigned = Enumerable.Range(0, _totalShards).Where(s => !assignedShards.Contains(s)).ToArray();
 
         if (unassigned.Length > 0)
         {
@@ -157,23 +159,21 @@ internal sealed class ShardCoordinator : IDisposable
         else
         {
             // All shards assigned, find worker with most shards and take one
-            var mostLoaded = _peers.Values
+            PeerNode? mostLoaded = _peers.Values
                 .Where(p => p.ProcessId != peer.ProcessId && p.AssignedShards.Count > 0)
                 .OrderByDescending(p => p.AssignedShards.Count)
                 .FirstOrDefault();
 
-            if (mostLoaded != null && mostLoaded.AssignedShards.Count > 0)
-            {
-                var shardToMove = mostLoaded.AssignedShards[0];
-                mostLoaded.AssignedShards.Remove(shardToMove);
-                peer.AssignedShards.Add(shardToMove);
-            }
+            if (mostLoaded is not { AssignedShards.Count: > 0 }) return;
+            int shardToMove = mostLoaded.AssignedShards[0];
+            mostLoaded.AssignedShards.Remove(shardToMove);
+            peer.AssignedShards.Add(shardToMove);
         }
     }
 
     private async Task HandleHealthAsync(System.Net.HttpListenerContext context)
     {
-        var response = new HealthCheckResponse(
+        HealthCheckResponse response = new(
             Status: "healthy",
             Shards: Enumerable.Range(0, _totalShards).ToList(),
             IsCoordinator: true,
@@ -185,7 +185,7 @@ internal sealed class ShardCoordinator : IDisposable
 
     private async Task HandleMetricsAsync(System.Net.HttpListenerContext context)
     {
-        var metrics = await _server.ReadJsonAsync<WorkerMetrics>(context);
+        WorkerMetrics? metrics = await _server.ReadJsonAsync<WorkerMetrics>(context);
         if (metrics == null || string.IsNullOrEmpty(metrics.ProcessId))
         {
             await _server.RespondAsync(context, 400, new { error = "Invalid metrics" });
@@ -197,23 +197,23 @@ internal sealed class ShardCoordinator : IDisposable
             peer.UpdateMetrics(metrics);
         }
 
-        await _server.RespondAsync(context, 204);
+        await ShardHttpServer.RespondAsync(context, 204);
     }
 
     private async Task HandleClusterStateAsync(System.Net.HttpListenerContext context)
     {
-        var healthyShards = _peers.Values
+        int healthyShards = _peers.Values
             .Where(p => p.IsHealthy)
             .SelectMany(p => p.AssignedShards)
             .Distinct()
             .Count();
 
-        var totalGuilds = _peers.Values
+        int totalGuilds = _peers.Values
             .Where(p => p.LatestMetrics != null)
             .SelectMany(p => p.LatestMetrics!.Shards)
             .Sum(s => s.GuildCount);
 
-        var state = new ClusterState(
+        ClusterState state = new ClusterState(
             TotalShards: _totalShards,
             HealthyShards: healthyShards,
             TotalGuilds: totalGuilds,
@@ -233,7 +233,7 @@ internal sealed class ShardCoordinator : IDisposable
             return;
         }
 
-        var request = await _server.ReadJsonAsync<CoordinatorResumptionRequest>(context);
+        CoordinatorResumptionRequest? request = await _server.ReadJsonAsync<CoordinatorResumptionRequest>(context);
         if (request == null || string.IsNullOrEmpty(request.OriginalCoordinatorId))
         {
             await _server.RespondAsync(context, 400, new { error = "Invalid request" });
@@ -243,19 +243,19 @@ internal sealed class ShardCoordinator : IDisposable
         _logger.Log(LogLevel.Information, $"Original coordinator {request.OriginalCoordinatorId} requesting resumption");
 
         // Package handoff data - create shard assignments dictionary
-        var shardAssignments = new Dictionary<int, string>();
-        foreach (var peer in _peers.Values)
+        Dictionary<int, string> shardAssignments = new();
+        foreach (PeerNode peer in _peers.Values)
         {
-            foreach (var shardId in peer.AssignedShards)
+            foreach (int shardId in peer.AssignedShards)
             {
                 shardAssignments[shardId] = peer.ProcessId;
             }
         }
 
-        var healthyShards = _peers.Values.Where(p => p.IsHealthy).SelectMany(p => p.AssignedShards).Distinct().Count();
-        var totalGuilds = _peers.Values.Where(p => p.LatestMetrics != null).SelectMany(p => p.LatestMetrics!.Shards).Sum(s => s.GuildCount);
+        int healthyShards = _peers.Values.Where(p => p.IsHealthy).SelectMany(p => p.AssignedShards).Distinct().Count();
+        int totalGuilds = _peers.Values.Where(p => p.LatestMetrics != null).SelectMany(p => p.LatestMetrics!.Shards).Sum(s => s.GuildCount);
 
-        var clusterState = new ClusterState(
+        ClusterState clusterState = new(
             TotalShards: _totalShards,
             HealthyShards: healthyShards,
             TotalGuilds: totalGuilds,
@@ -264,7 +264,7 @@ internal sealed class ShardCoordinator : IDisposable
             Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         );
 
-        var handoff = new CoordinatorHandoffData(
+        CoordinatorHandoffData handoff = new(
             SuccessionOrder: _succession.GetAll(),
             PeerNodes: _peers.Values.Select(p => p.ToState()).ToList(),
             ShardAssignments: shardAssignments,
@@ -287,7 +287,7 @@ internal sealed class ShardCoordinator : IDisposable
             return;
         }
 
-        var handoff = await _server.ReadJsonAsync<CoordinatorHandoffData>(context);
+        CoordinatorHandoffData? handoff = await _server.ReadJsonAsync<CoordinatorHandoffData>(context);
         if (handoff == null)
         {
             await _server.RespondAsync(context, 400, new { error = "Invalid handoff data" });
@@ -300,9 +300,9 @@ internal sealed class ShardCoordinator : IDisposable
         _totalShards = handoff.TotalShards;
         _succession.LoadFrom(handoff.SuccessionOrder);
         _peers.Clear();
-        foreach (var peerState in handoff.PeerNodes)
+        foreach (PeerNodeState peerState in handoff.PeerNodes)
         {
-            var peer = PeerNode.FromState(peerState);
+            PeerNode peer = PeerNode.FromState(peerState);
             _peers.TryAdd(peer.ProcessId, peer);
         }
 
@@ -316,7 +316,7 @@ internal sealed class ShardCoordinator : IDisposable
 
     private async Task AnnounceResumptionAsync()
     {
-        var announcement = new CoordinatorResumedAnnouncement(
+        CoordinatorResumedAnnouncement announcement = new(
             ResumedCoordinatorId: _coordinatorId,
             ResumedCoordinatorUrl: _listenUrl,
             PreviousCoordinatorId: "temp-coordinator",
@@ -325,12 +325,12 @@ internal sealed class ShardCoordinator : IDisposable
             Message: "Original coordinator has resumed"
         );
 
-        var workers = _peers.Values.ToArray();
-        foreach (var worker in workers)
+        PeerNode[] workers = _peers.Values.ToArray();
+        foreach (PeerNode worker in workers)
         {
             try
             {
-                var state = worker.ToState();
+                PeerNodeState state = worker.ToState();
                 await _client.PostAsync($"{state.Url}/coordinator/resumed", announcement);
             }
             catch (Exception ex)
@@ -343,19 +343,19 @@ internal sealed class ShardCoordinator : IDisposable
 
     private async Task BroadcastSuccessionUpdateAsync()
     {
-        var update = _succession.CreateUpdate();
-        var workers = _peers.Values.ToArray();
+        SuccessionUpdate update = _succession.CreateUpdate();
+        PeerNode[] workers = _peers.Values.ToArray();
 
-        foreach (var worker in workers)
+        foreach (PeerNode worker in workers)
         {
             try
             {
-                var state = worker.ToState();
+                PeerNodeState state = worker.ToState();
                 await _client.PostAsync($"{state.Url}/succession", update);
             }
             catch (Exception ex)
             {
-                var state = worker.ToState();
+                PeerNodeState state = worker.ToState();
                 _logger.Log(LogLevel.Error, $"Failed to send succession update to {state.ProcessId}: {ex.Message}", ex);
             }
         }
@@ -380,67 +380,59 @@ internal sealed class ShardCoordinator : IDisposable
 
     private void OnPeerFailed(PeerNode peer)
     {
-        var state = peer.ToState();
+        PeerNodeState state = peer.ToState();
         _logger.Log(LogLevel.Error, $"Peer {state.ProcessId} failed, removing from cluster");
 
-        if (_peers.TryRemove(peer.ProcessId, out _))
+        if (!_peers.TryRemove(peer.ProcessId, out _)) return;
+        _succession.RemoveWorker(peer.ProcessId);
+
+        // Reassign orphaned shards
+        int[] orphanedShards = peer.AssignedShards.ToArray();
+        if (orphanedShards.Length <= 0) return;
+        PeerNode[] healthyWorkers = _peers.Values.Where(p => p.IsHealthy).ToArray();
+        if (healthyWorkers.Length <= 0) return;
+        int targetIndex = 0;
+        foreach (int shardId in orphanedShards)
         {
-            _succession.RemoveWorker(peer.ProcessId);
+            PeerNode target = healthyWorkers[targetIndex % healthyWorkers.Length];
+            target.AssignedShards.Add(shardId);
+            targetIndex++;
 
-            // Reassign orphaned shards
-            var orphanedShards = peer.AssignedShards.ToArray();
-            if (orphanedShards.Length > 0)
-            {
-                var healthyWorkers = _peers.Values.Where(p => p.IsHealthy).ToArray();
-                if (healthyWorkers.Length > 0)
-                {
-                    int targetIndex = 0;
-                    foreach (var shardId in orphanedShards)
-                    {
-                        var target = healthyWorkers[targetIndex % healthyWorkers.Length];
-                        target.AssignedShards.Add(shardId);
-                        targetIndex++;
-
-                        var targetState = target.ToState();
-                        _logger.Log(LogLevel.Information, $"Reassigned orphaned shard {shardId} to {targetState.ProcessId}");
-                    }
-                }
-            }
+            PeerNodeState targetState = target.ToState();
+            _logger.Log(LogLevel.Information, $"Reassigned orphaned shard {shardId} to {targetState.ProcessId}");
         }
     }
 
     private void OnMigrationNeeded(ShardMigrationRequest migration)
     {
-        if (_peers.TryGetValue(migration.FromNode, out var from) &&
-            _peers.TryGetValue(migration.ToNode, out var to))
+        if (!_peers.TryGetValue(migration.FromNode, out PeerNode? from) ||
+            !_peers.TryGetValue(migration.ToNode, out PeerNode? to)) return;
+        from.AssignedShards.Remove(migration.ShardId);
+        to.AssignedShards.Add(migration.ShardId);
+
+        // Send migration command to both workers
+        _ = Task.Run(async () =>
         {
-            from.AssignedShards.Remove(migration.ShardId);
-            to.AssignedShards.Add(migration.ShardId);
-
-            // Send migration command to both workers
-            _ = Task.Run(async () =>
+            try
             {
-                try
-                {
-                    var fromState = from.ToState();
-                    var toState = to.ToState();
+                PeerNodeState fromState = from.ToState();
+                PeerNodeState toState = to.ToState();
 
-                    await _client.PostAsync($"{fromState.Url}/migrate", migration);
+                await _client.PostAsync($"{fromState.Url}/migrate", migration);
 
-                    var assignment = new ShardAssignment(
-                        Shards: new List<int> { migration.ShardId },
-                        Reason: $"Migration from {migration.FromNode}",
-                        Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    );
+                ShardAssignment assignment = new ShardAssignment(
+                    Shards: [migration.ShardId],
+                    Reason: $"Migration from {migration.FromNode}",
+                    Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                );
 
-                    await _client.PostAsync($"{toState.Url}/assignment", assignment);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log(LogLevel.Error, $"Migration execution error: {ex.Message}", ex);
-                }
-            });
-        }
+                await _client.PostAsync($"{toState.Url}/assignment", assignment);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Error, $"Migration execution error: {ex.Message}", ex);
+            }
+        });
     }
 
     /// <summary>

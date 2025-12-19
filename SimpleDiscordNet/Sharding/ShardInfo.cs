@@ -45,7 +45,7 @@ public sealed class ShardInfo
     /// <summary>
     /// Read-only list of guild IDs assigned to this shard.
     /// </summary>
-    public IReadOnlyList<string> GuildIds { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> GuildIds { get; init; } = [];
 
     /// <summary>
     /// Current events per second being processed by this shard.

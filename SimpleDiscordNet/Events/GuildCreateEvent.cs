@@ -8,8 +8,8 @@ namespace SimpleDiscordNet.Events;
 /// </summary>
 internal sealed record GuildCreateEvent
 {
-    public required Guild Guild { get; init; }
-    public Channel[]? Channels { get; init; }
-    public Member[]? Members { get; init; }
-    public Channel[]? Threads { get; init; }
+    public required DiscordGuild Guild { get; init; }
+    public DiscordChannel[]? Channels { get; init; }
+    public DiscordMember[]? Members { get; init; }
+    public DiscordChannel[]? Threads { get; init; }
 }

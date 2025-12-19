@@ -1,10 +1,10 @@
 namespace SimpleDiscordNet.Entities;
 
-public sealed record Member
+public sealed record DiscordMember
 {
-    public required User User { get; init; }
+    public required DiscordUser User { get; init; }
     public string? Nick { get; init; }
-    public string[] Roles { get; init; } = [];
+    public ulong[] Roles { get; init; } = [];
 
     /// <summary>Guild-specific avatar hash</summary>
     public string? Avatar { get; init; }
@@ -28,7 +28,7 @@ public sealed record Member
     public bool? Pending { get; init; }
 
     /// <summary>Total permissions of the member in the channel (for interaction contexts)</summary>
-    public string? Permissions { get; init; }
+    public ulong? Permissions { get; init; }
 
     /// <summary>When the user's timeout will expire (ISO8601 timestamp). Null if not timed out.</summary>
     public string? Communication_Disabled_Until { get; init; }
@@ -44,7 +44,7 @@ public sealed record Member
     /// <param name="guildId">The guild ID</param>
     /// <param name="size">Image size (power of 2, between 16 and 4096)</param>
     /// <param name="format">Image format (png, jpg, webp, gif)</param>
-    public string? GetGuildAvatarUrl(string guildId, int size = 256, string format = "png")
+    public string? GetGuildAvatarUrl(ulong guildId, int size = 256, string format = "png")
     {
         return string.IsNullOrEmpty(Avatar) ? null : $"https://cdn.discordapp.com/guilds/{guildId}/users/{User.Id}/avatars/{Avatar}.{format}?size={size}";
     }
@@ -52,13 +52,13 @@ public sealed record Member
     /// <summary>
     /// Gets the effective avatar URL (guild avatar if available, otherwise user avatar).
     /// </summary>
-    public string? GetEffectiveAvatarUrl(string guildId, int size = 256, string format = "png")
+    public string? GetEffectiveAvatarUrl(ulong guildId, int size = 256, string format = "png")
         => GetGuildAvatarUrl(guildId, size, format) ?? User.GetAvatarUrl(size, format) ?? User.GetDefaultAvatarUrl();
 
     /// <summary>
     /// Checks if this member has a specific role.
     /// </summary>
-    public bool HasRole(string roleId) => Roles.Contains(roleId);
+    public bool HasRole(ulong roleId) => Roles.Contains(roleId);
 
     /// <summary>
     /// Checks if the member is currently timed out.
@@ -75,7 +75,7 @@ public sealed record Member
     }
 
     /// <summary>
-    /// Parses the Permissions string as a ulong bitset (for interaction contexts).
+    /// Checks if the member has a specific permission (for interaction contexts).
     /// </summary>
-    public ulong GetPermissionBits() => string.IsNullOrEmpty(Permissions) ? 0UL : (ulong.TryParse(Permissions, out ulong val) ? val : 0UL);
+    public bool HasPermission(PermissionFlags permission) => Permissions.HasValue && (Permissions.Value & (ulong)permission) != 0;
 }

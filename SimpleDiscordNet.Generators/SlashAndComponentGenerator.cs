@@ -92,6 +92,11 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
                         groupDescription = ad.ConstructorArguments[1].Value as string;
                     break;
                 }
+                // Check for [Defer] on the class level
+                else if (name == DeferAttr && !autoDefer)
+                {
+                    autoDefer = true; // Class-level [Defer] applies to all methods
+                }
             }
         }
 

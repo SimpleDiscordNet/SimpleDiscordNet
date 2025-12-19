@@ -8,7 +8,7 @@ internal sealed partial class GatewayClient
     private async Task ReceiveLoop(CancellationToken ct)
     {
         byte[] buffer = new byte[65536];
-        using var memoryStream = new System.IO.MemoryStream(4096);
+        using var memoryStream = new MemoryStream(4096);
         ArraySegment<byte> seg = buffer;
         try
         {

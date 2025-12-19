@@ -3,19 +3,19 @@ namespace SimpleDiscordNet.Entities;
 /// <summary>
 /// Represents a Discord message.
 /// </summary>
-public sealed record Message
+public sealed record DiscordMessage
 {
-    public required string Id { get; init; }
-    public required string ChannelId { get; init; }
-    public string? GuildId { get; init; }
-    public required User Author { get; init; }
+    public required ulong Id { get; init; }
+    public required ulong ChannelId { get; init; }
+    public ulong? GuildId { get; init; }
+    public required DiscordUser Author { get; init; }
     public required string Content { get; init; }
-    public string? Timestamp { get; init; }
-    public string? Edited_Timestamp { get; init; }
+    public DateTimeOffset? Timestamp { get; init; }
+    public DateTimeOffset? Edited_Timestamp { get; init; }
     public bool Tts { get; init; }
     public bool Mention_Everyone { get; init; }
-    public User[]? Mentions { get; init; }
-    public string[]? Mention_Roles { get; init; }
+    public DiscordUser[]? Mentions { get; init; }
+    public ulong[]? Mention_Roles { get; init; }
     public Attachment[]? Attachments { get; init; }
     public SimpleDiscordNet.Models.Embed[]? Embeds { get; init; }
     public Reaction[]? Reactions { get; init; }
@@ -72,5 +72,5 @@ public sealed record Reaction
 {
     public required int Count { get; init; }
     public required bool Me { get; init; }
-    public required Emoji Emoji { get; init; }
+    public required DiscordEmoji Emoji { get; init; }
 }

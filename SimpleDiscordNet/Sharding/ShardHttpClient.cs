@@ -36,19 +36,19 @@ internal sealed class ShardHttpClient : IDisposable
     /// </summary>
     public async Task<TResponse?> PostAsync<TRequest, TResponse>(string url, TRequest payload, CancellationToken ct = default)
     {
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer))
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
         {
             JsonSerializer.Serialize(writer, payload, _json);
         }
 
-        using var content = new ReadOnlyMemoryContent(buffer.WrittenMemory);
+        using ReadOnlyMemoryContent content = new(buffer.WrittenMemory);
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
 
-        using var response = await _http.PostAsync(url, content, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await _http.PostAsync(url, content, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var responseBytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+        byte[] responseBytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
         return JsonSerializer.Deserialize<TResponse>(responseBytes.AsSpan(), _json);
     }
 
@@ -58,16 +58,16 @@ internal sealed class ShardHttpClient : IDisposable
     /// </summary>
     public async Task PostAsync<TRequest>(string url, TRequest payload, CancellationToken ct = default)
     {
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer))
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
         {
             JsonSerializer.Serialize(writer, payload, _json);
         }
 
-        using var content = new ReadOnlyMemoryContent(buffer.WrittenMemory);
+        using ReadOnlyMemoryContent content = new(buffer.WrittenMemory);
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
 
-        using var response = await _http.PostAsync(url, content, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await _http.PostAsync(url, content, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
 
@@ -77,10 +77,10 @@ internal sealed class ShardHttpClient : IDisposable
     /// </summary>
     public async Task<TResponse?> GetAsync<TResponse>(string url, CancellationToken ct = default)
     {
-        using var response = await _http.GetAsync(url, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await _http.GetAsync(url, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var responseBytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+        byte[] responseBytes = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
         return JsonSerializer.Deserialize<TResponse>(responseBytes.AsSpan(), _json);
     }
 
@@ -90,7 +90,7 @@ internal sealed class ShardHttpClient : IDisposable
     /// </summary>
     public async Task DeleteAsync(string url, CancellationToken ct = default)
     {
-        using var response = await _http.DeleteAsync(url, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await _http.DeleteAsync(url, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
 

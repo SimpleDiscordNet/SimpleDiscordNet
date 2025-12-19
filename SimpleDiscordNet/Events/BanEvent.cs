@@ -7,7 +7,7 @@ namespace SimpleDiscordNet.Events;
 /// </summary>
 public sealed record BanEvent
 {
-    public required User User { get; init; }
-    public required Guild Guild { get; init; }
-    public Member? Member { get; init; }
+    public required DiscordUser User { get; init; }
+    public required DiscordGuild Guild { get; init; }
+    public DiscordMember? Member { get; init; }
 }

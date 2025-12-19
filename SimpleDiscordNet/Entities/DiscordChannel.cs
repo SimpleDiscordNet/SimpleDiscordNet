@@ -1,12 +1,12 @@
 namespace SimpleDiscordNet.Entities;
 
-public sealed record Channel
+public sealed record DiscordChannel
 {
-    public required string Id { get; init; }
+    public required ulong Id { get; init; }
     public required string Name { get; init; }
     public required int Type { get; init; }
-    public string? Parent_Id { get; init; }
-    public string? Guild_Id { get; init; }
+    public ulong? Parent_Id { get; init; }
+    public ulong? Guild_Id { get; init; }
     public ChannelPermissionOverwrite[]? Permission_Overwrites { get; init; }
 
     /// <summary>Discord channel type constants</summary>
@@ -40,10 +40,10 @@ public sealed record Channel
     public bool IsThread => Type is ChannelType.AnnouncementThread or ChannelType.PublicThread or ChannelType.PrivateThread;
 
     /// <summary>Returns true if this channel is in a category (has Parent_Id)</summary>
-    public bool HasParent => !string.IsNullOrEmpty(Parent_Id);
+    public bool HasParent => Parent_Id.HasValue;
 
     /// <summary>Gets the permission overwrite for a specific role or member ID, or null if not found</summary>
-    public ChannelPermissionOverwrite? GetOverwrite(string id)
+    public ChannelPermissionOverwrite? GetOverwrite(ulong id)
         => Permission_Overwrites?.FirstOrDefault(o => o.Id == id);
 
     /// <summary>Gets all role permission overwrites</summary>
@@ -57,26 +57,21 @@ public sealed record Channel
 
 public sealed record ChannelPermissionOverwrite
 {
-    public required string Id { get; init; }
+    public required ulong Id { get; init; }
     /// <summary>0 = role, 1 = member</summary>
     public required int Type { get; init; }
-    /// <summary>Bitset as string per Discord API</summary>
-    public required string Allow { get; init; }
-    /// <summary>Bitset as string per Discord API</summary>
-    public required string Deny { get; init; }
+    /// <summary>Permission bitset for allowed permissions</summary>
+    public required ulong Allow { get; init; }
+    /// <summary>Permission bitset for denied permissions</summary>
+    public required ulong Deny { get; init; }
 
     /// <summary>Returns true if this overwriting is for a role (Type = 0)</summary>
     public bool IsRole => Type == 0;
     /// <summary>Returns true if this overwriting is for a member (Type = 1)</summary>
     public bool IsMember => Type == 1;
 
-    /// <summary>Parses the Allow permissions as a ulong bitset</summary>
-    public ulong GetAllowBits() => ulong.TryParse(Allow, out ulong val) ? val : 0UL;
-    /// <summary>Parses the Deny permissions as a ulong bitset</summary>
-    public ulong GetDenyBits() => ulong.TryParse(Deny, out ulong val) ? val : 0UL;
-
     /// <summary>Checks if a specific permission is explicitly allowed</summary>
-    public bool HasAllow(PermissionFlags permission) => (GetAllowBits() & (ulong)permission) != 0;
+    public bool HasAllow(PermissionFlags permission) => (Allow & (ulong)permission) != 0;
     /// <summary>Checks if a specific permission is explicitly denied</summary>
-    public bool HasDeny(PermissionFlags permission) => (GetDenyBits() & (ulong)permission) != 0;
+    public bool HasDeny(PermissionFlags permission) => (Deny & (ulong)permission) != 0;
 }

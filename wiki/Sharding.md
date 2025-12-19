@@ -1,9 +1,11 @@
 # Sharding
 
-**Version**: 1.2.1+
+**Version**: 1.4.0
 **Status**: ✅ Production Ready
 
 Sharding allows your Discord bot to scale horizontally across multiple processes or machines, essential for large bots serving thousands of guilds.
+
+**🆕 v1.4.0:** Distributed sharding now uses HTTPS with TLS 1.3+ for secure coordinator/worker communication.
 
 ## Overview
 
@@ -99,13 +101,19 @@ Fully automated distributed sharding with coordinator/worker architecture.
 ```csharp
 var coordinator = new DiscordBot.Builder(token, intents)
     .WithDistributedCoordinator(
-        listenUrl: "http://+:8080/",
+        listenUrl: "https://+:8443/",  // 🆕 v1.4.0: HTTPS with TLS
         isOriginalCoordinator: true
     )
     .Build();
 
 await coordinator.StartAsync();
 ```
+
+**🆕 v1.4.0 Security Note:**
+- Default port changed from 8080 to 8443
+- HTTPS/TLS is now required for coordinator communication
+- For production: Configure SSL certificates using `netsh http add sslcert` (Windows) or use a TLS-terminating reverse proxy (nginx, Caddy, etc.)
+- Development: Self-signed certificates can be used for testing
 
 **Role**:
 - Auto-detects shard count from Discord API
@@ -119,7 +127,7 @@ await coordinator.StartAsync();
 ```csharp
 var worker = new DiscordBot.Builder(token, intents)
     .WithDistributedWorker(
-        coordinatorUrl: "http://coordinator:8080/",
+        coordinatorUrl: "https://coordinator:8443/",  // 🆕 v1.4.0: HTTPS
         listenUrl: "http://+:8081/",
         processId: "worker-1"
     )
@@ -148,9 +156,11 @@ services:
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - SHARD_MODE=coordinator
-      - LISTEN_URL=http://+:8080/
+      - LISTEN_URL=https://+:8443/
     ports:
-      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - ./certs:/certs  # SSL certificates
     command: ["--mode", "coordinator"]
 
   worker-1:
@@ -246,8 +256,8 @@ If the original coordinator comes back online, it can resume control:
 ```csharp
 var coordinator = new DiscordBot.Builder(token, intents)
     .WithDistributedCoordinator(
-        listenUrl: "http://+:8080/",
-        isOriginalCoordinator: true  // ← Enables resumption
+        listenUrl: "https://+:8443/",  // 🆕 v1.4.0: HTTPS
+        isOriginalCoordinator: true    // ← Enables resumption
     )
     .Build();
 ```
@@ -280,10 +290,16 @@ Migration is seamless with no downtime.
 
 ```csharp
 .WithDistributedCoordinator(
-    listenUrl: "http://+:8080/",          // HTTP endpoint
+    listenUrl: "https://+:8443/",         // 🆕 v1.4.0: HTTPS endpoint
     isOriginalCoordinator: true           // Enable resumption
 )
 ```
+
+**Security Configuration:**
+- SSL certificates must be configured for HTTPS to work
+- Windows: Use `netsh http add sslcert` to bind certificates
+- Linux: Use reverse proxy (nginx, Caddy) for TLS termination
+- See [Microsoft docs](https://learn.microsoft.com/en-us/dotnet/core/extensions/httpclient-http3) for HttpListener SSL configuration
 
 ### Worker Options
 

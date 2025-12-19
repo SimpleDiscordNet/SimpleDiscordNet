@@ -45,20 +45,20 @@ public interface IDiscordBot : IAsyncDisposable, IDisposable
     /// <summary>
     /// Retrieves a guild by its id.
     /// </summary>
-    Task<Guild?> GetGuildAsync(string guildId, CancellationToken ct = default);
+    Task<DiscordGuild?> GetGuildAsync(string guildId, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieves all channels for a guild.
     /// </summary>
-    Task<Channel[]?> GetGuildChannelsAsync(string guildId, CancellationToken ct = default);
+    Task<DiscordChannel[]?> GetGuildChannelsAsync(string guildId, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieves all roles for a guild.
     /// </summary>
-    Task<Role[]?> GetGuildRolesAsync(string guildId, CancellationToken ct = default);
+    Task<DiscordRole[]?> GetGuildRolesAsync(string guildId, CancellationToken ct = default);
 
     /// <summary>
     /// Lists members of a guild with pagination support.
     /// </summary>
-    Task<Member[]?> ListGuildMembersAsync(string guildId, int limit = 1000, string? after = null, CancellationToken ct = default);
+    Task<DiscordMember[]?> ListGuildMembersAsync(string guildId, int limit = 1000, string? after = null, CancellationToken ct = default);
 }

@@ -5,11 +5,11 @@ namespace SimpleDiscordNet.Models.Context;
 /// <summary>
 /// A user enriched with its guild context.
 /// </summary>
-public sealed record UserWithGuild(User User, Guild Guild, Member? Member)
+public sealed record UserWithGuild(DiscordUser User, DiscordGuild Guild, DiscordMember? Member)
 {
-    public string Id => User.Id;
+    public ulong Id => User.Id;
     public string Username => User.Username;
     public string DisplayName => Member?.DisplayName ?? User.DisplayName;
-    public string GuildId => Guild.Id;
+    public ulong GuildId => Guild.Id;
     public string GuildName => Guild.Name;
 }

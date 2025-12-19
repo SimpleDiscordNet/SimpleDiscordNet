@@ -19,7 +19,7 @@ internal sealed class SlashCommandService(NativeLogger logger)
         }
         else
         {
-            ref var dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_grouped, group, out _);
+            ref Dictionary<string, CommandHandler>? dict = ref CollectionsMarshal.GetValueRefOrAddDefault(_grouped, group, out _);
             dict ??= new Dictionary<string, CommandHandler>(StringComparer.Ordinal);
             dict[name] = handler;
         }
@@ -41,8 +41,7 @@ internal sealed class SlashCommandService(NativeLogger logger)
         }
     }
 
-    public ApplicationCommandDefinition[] GetDefinitions(ApplicationCommandDefinition[]? fromGenerator)
-        => fromGenerator ?? [];
+    public static ApplicationCommandDefinition[] GetDefinitions(ApplicationCommandDefinition[]? fromGenerator) => fromGenerator ?? [];
 
     public async Task HandleAsync(InteractionCreateEvent e, RestClient rest, CancellationToken ct)
     {

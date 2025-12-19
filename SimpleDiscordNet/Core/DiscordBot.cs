@@ -54,7 +54,7 @@ public sealed class DiscordBot : IDiscordBot
     private volatile bool _started;
 
     // Track pending member chunk requests to know when the guild is fully loaded
-    private readonly ConcurrentDictionary<string, int> _pendingMemberChunks = new();
+    private readonly ConcurrentDictionary<ulong, int> _pendingMemberChunks = new();
 
     private DiscordBot(
         string token,
@@ -119,8 +119,8 @@ public sealed class DiscordBot : IDiscordBot
                 break;
 
             case ShardMode.Distributed when isOriginalCoordinator:
-                // Distributed coordinator
-                _coordinator = new ShardCoordinator(token, workerListenUrl ?? "http://+:8080/", logger, isOriginalCoordinator: true);
+                // Distributed coordinator with HTTPS
+                _coordinator = new ShardCoordinator(token, workerListenUrl ?? "https://+:8443/", logger, isOriginalCoordinator: true);
                 break;
 
             case ShardMode.Distributed:
@@ -196,14 +196,14 @@ public sealed class DiscordBot : IDiscordBot
         {
             case ShardMode.SingleProcess when _shardManager != null && _shardId.HasValue && _totalShards.HasValue:
                 // Start specific shard via ShardManager
-                var shard = await _shardManager.StartShardAsync(_shardId.Value, _totalShards.Value, cancellationToken).ConfigureAwait(false);
-                _shardManager.WireShardEvents(shard, OnConnected, OnDisconnected, OnError, null, OnInteractionCreate,
+                Shard shard = await _shardManager.StartShardAsync(_shardId.Value, _totalShards.Value, cancellationToken).ConfigureAwait(false);
+                ShardManager.WireShardEvents(shard, OnConnected, OnDisconnected, OnError, null, OnInteractionCreate,
                     OnGuildCreate, OnGuildUpdate, OnGuildDelete, OnGuildEmojisUpdate,
                     OnChannelCreate, OnChannelUpdate, OnChannelDelete,
                     OnGuildRoleCreate, OnGuildRoleUpdate, OnGuildRoleDelete,
                     OnThreadCreate, OnThreadUpdate, OnThreadDelete,
                     OnGuildMemberAdd, OnGuildMemberUpdate, OnGuildMemberRemove, OnGuildMembersChunk,
-                    OnGuildBanAdd, OnGuildBanRemove, OnUserUpdate,
+                    OnGuildBanAdd, OnGuildBanRemove, OnUserUpdate, OnGuildAuditLogEntryCreate,
                     OnMessageUpdate, OnMessageDelete, OnMessageDeleteBulk,
                     OnMessageReactionAdd, OnMessageReactionRemove, OnMessageReactionRemoveAll, OnMessageReactionRemoveEmoji);
                 break;
@@ -217,18 +217,18 @@ public sealed class DiscordBot : IDiscordBot
                 // Start worker
                 await _worker.StartAsync(cancellationToken).ConfigureAwait(false);
                 // Wire events from worker's shards
-                foreach (var workerId in _worker.ShardManager.GetShardIds())
+                foreach (int workerId in _worker.ShardManager.GetShardIds())
                 {
-                    var workerShard = _worker.ShardManager.GetShard(workerId);
+                    Shard? workerShard = _worker.ShardManager.GetShard(workerId);
                     if (workerShard != null)
                     {
-                        _worker.ShardManager.WireShardEvents(workerShard, OnConnected, OnDisconnected, OnError, null, OnInteractionCreate,
+                        ShardManager.WireShardEvents(workerShard, OnConnected, OnDisconnected, OnError, null, OnInteractionCreate,
                             OnGuildCreate, OnGuildUpdate, OnGuildDelete, OnGuildEmojisUpdate,
                             OnChannelCreate, OnChannelUpdate, OnChannelDelete,
                             OnGuildRoleCreate, OnGuildRoleUpdate, OnGuildRoleDelete,
                             OnThreadCreate, OnThreadUpdate, OnThreadDelete,
                             OnGuildMemberAdd, OnGuildMemberUpdate, OnGuildMemberRemove, OnGuildMembersChunk,
-                            OnGuildBanAdd, OnGuildBanRemove, OnUserUpdate,
+                            OnGuildBanAdd, OnGuildBanRemove, OnUserUpdate, OnGuildAuditLogEntryCreate,
                             OnMessageUpdate, OnMessageDelete, OnMessageDeleteBulk,
                             OnMessageReactionAdd, OnMessageReactionRemove, OnMessageReactionRemoveAll, OnMessageReactionRemoveEmoji);
                     }
@@ -287,7 +287,7 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public async Task SyncSlashCommandsAsync(IEnumerable<string> guildIds, CancellationToken ct = default)
     {
-        if (guildIds is null) throw new ArgumentNullException(nameof(guildIds));
+        ArgumentNullException.ThrowIfNull(guildIds);
         ApplicationInfo app = await _rest.GetApplicationAsync(ct).ConfigureAwait(false)
                   ?? throw new InvalidOperationException("Failed to fetch application info");
         if (_generatedManifests.Count == 0)
@@ -311,7 +311,7 @@ public sealed class DiscordBot : IDiscordBot
         CreateMessageRequest payload = new()
         {
             content = content,
-            embeds = embed is null ? null : [embed.ToModel()]
+            embeds = embed is null ? null : [embed.Build()]
         };
         return _rest.PostAsync($"/channels/{channelId}/messages", payload, ct);
     }
@@ -324,7 +324,7 @@ public sealed class DiscordBot : IDiscordBot
         CreateMessageRequest payload = new()
         {
             content = content,
-            embeds = embed is null ? null : [embed.ToModel()],
+            embeds = embed is null ? null : [embed.Build()],
             attachments = [new { id = 0, filename = fileName }]
         };
         return _rest.PostMultipartAsync($"/channels/{channelId}/messages", payload, (fileName, data), ct);
@@ -333,29 +333,29 @@ public sealed class DiscordBot : IDiscordBot
     /// <summary>
     /// Gets a guild by id.
     /// </summary>
-    public Task<Guild?> GetGuildAsync(string guildId, CancellationToken ct = default)
-        => _rest.GetAsync<Guild>($"/guilds/{guildId}", ct);
+    public Task<DiscordGuild?> GetGuildAsync(string guildId, CancellationToken ct = default)
+        => _rest.GetAsync<DiscordGuild>($"/guilds/{guildId}", ct);
 
     /// <summary>
     /// Gets channels of a guild.
     /// </summary>
-    public Task<Channel[]?> GetGuildChannelsAsync(string guildId, CancellationToken ct = default)
-        => _rest.GetAsync<Channel[]>($"/guilds/{guildId}/channels", ct);
+    public Task<DiscordChannel[]?> GetGuildChannelsAsync(string guildId, CancellationToken ct = default)
+        => _rest.GetAsync<DiscordChannel[]>($"/guilds/{guildId}/channels", ct);
 
     /// <summary>
     /// Gets roles of a guild.
     /// </summary>
-    public Task<Role[]?> GetGuildRolesAsync(string guildId, CancellationToken ct = default)
-        => _rest.GetAsync<Role[]>($"/guilds/{guildId}/roles", ct);
+    public Task<DiscordRole[]?> GetGuildRolesAsync(string guildId, CancellationToken ct = default)
+        => _rest.GetAsync<DiscordRole[]>($"/guilds/{guildId}/roles", ct);
 
     /// <summary>
     /// Lists members of a guild with pagination support.
     /// </summary>
-    public Task<Member[]?> ListGuildMembersAsync(string guildId, int limit = 1000, string? after = null, CancellationToken ct = default)
+    public Task<DiscordMember[]?> ListGuildMembersAsync(string guildId, int limit = 1000, string? after = null, CancellationToken ct = default)
     {
         if (limit is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(limit));
         string route = $"/guilds/{guildId}/members?limit={limit}" + (after is null ? string.Empty : $"&after={after}");
-        return _rest.GetAsync<Member[]>(route, ct);
+        return _rest.GetAsync<DiscordMember[]>(route, ct);
     }
 
     /// <summary>
@@ -389,7 +389,7 @@ public sealed class DiscordBot : IDiscordBot
     /// <param name="hoist">Whether to display role separately in sidebar</param>
     /// <param name="mentionable">Whether role is mentionable</param>
     /// <param name="ct">Cancellation token</param>
-    public Task<Role?> CreateRoleAsync(string guildId, string? name = null, ulong? permissions = null, int? color = null, bool? hoist = null, bool? mentionable = null, CancellationToken ct = default)
+    public Task<DiscordRole?> CreateRoleAsync(string guildId, string? name = null, ulong? permissions = null, int? color = null, bool? hoist = null, bool? mentionable = null, CancellationToken ct = default)
     {
         var payload = new
         {
@@ -399,13 +399,13 @@ public sealed class DiscordBot : IDiscordBot
             hoist,
             mentionable
         };
-        return _rest.PostGuildRoleAsync<Role>(guildId, payload, ct);
+        return _rest.PostGuildRoleAsync<DiscordRole>(guildId, payload, ct);
     }
 
     /// <summary>
     /// Modifies a role in a guild.
     /// </summary>
-    public Task<Role?> ModifyRoleAsync(string guildId, string roleId, string? name = null, ulong? permissions = null, int? color = null, bool? hoist = null, bool? mentionable = null, CancellationToken ct = default)
+    public Task<DiscordRole?> ModifyRoleAsync(string guildId, string roleId, string? name = null, ulong? permissions = null, int? color = null, bool? hoist = null, bool? mentionable = null, CancellationToken ct = default)
     {
         var payload = new
         {
@@ -415,7 +415,7 @@ public sealed class DiscordBot : IDiscordBot
             hoist,
             mentionable
         };
-        return _rest.PatchGuildRoleAsync<Role>(guildId, roleId, payload, ct);
+        return _rest.PatchGuildRoleAsync<DiscordRole>(guildId, roleId, payload, ct);
     }
 
     /// <summary>
@@ -433,7 +433,7 @@ public sealed class DiscordBot : IDiscordBot
     /// <param name="parentId">Parent category ID (optional)</param>
     /// <param name="permissionOverwrites">Permission overwrites (optional)</param>
     /// <param name="ct">Cancellation token</param>
-    public Task<Channel?> CreateChannelAsync(string guildId, string name, int type, string? parentId = null, object[]? permissionOverwrites = null, CancellationToken ct = default)
+    public Task<DiscordChannel?> CreateChannelAsync(string guildId, string name, int type, string? parentId = null, object[]? permissionOverwrites = null, CancellationToken ct = default)
     {
         var payload = new
         {
@@ -442,31 +442,31 @@ public sealed class DiscordBot : IDiscordBot
             parent_id = parentId,
             permission_overwrites = permissionOverwrites
         };
-        return _rest.PostGuildChannelAsync<Channel>(guildId, payload, ct);
+        return _rest.PostGuildChannelAsync<DiscordChannel>(guildId, payload, ct);
     }
 
     /// <summary>
     /// Creates a new text channel in a guild.
     /// </summary>
-    public Task<Channel?> CreateTextChannelAsync(string guildId, string name, string? parentId = null, CancellationToken ct = default)
-        => CreateChannelAsync(guildId, name, Channel.ChannelType.GuildText, parentId, ct: ct);
+    public Task<DiscordChannel?> CreateTextChannelAsync(string guildId, string name, string? parentId = null, CancellationToken ct = default)
+        => CreateChannelAsync(guildId, name, DiscordChannel.ChannelType.GuildText, parentId, ct: ct);
 
     /// <summary>
     /// Creates a new voice channel in a guild.
     /// </summary>
-    public Task<Channel?> CreateVoiceChannelAsync(string guildId, string name, string? parentId = null, CancellationToken ct = default)
-        => CreateChannelAsync(guildId, name, Channel.ChannelType.GuildVoice, parentId, ct: ct);
+    public Task<DiscordChannel?> CreateVoiceChannelAsync(string guildId, string name, string? parentId = null, CancellationToken ct = default)
+        => CreateChannelAsync(guildId, name, DiscordChannel.ChannelType.GuildVoice, parentId, ct: ct);
 
     /// <summary>
     /// Creates a new category channel in a guild.
     /// </summary>
-    public Task<Channel?> CreateCategoryAsync(string guildId, string name, CancellationToken ct = default)
-        => CreateChannelAsync(guildId, name, Channel.ChannelType.GuildCategory, ct: ct);
+    public Task<DiscordChannel?> CreateCategoryAsync(string guildId, string name, CancellationToken ct = default)
+        => CreateChannelAsync(guildId, name, DiscordChannel.ChannelType.GuildCategory, ct: ct);
 
     /// <summary>
     /// Modifies a channel.
     /// </summary>
-    public Task<Channel?> ModifyChannelAsync(string channelId, string? name = null, int? type = null, string? parentId = null, CancellationToken ct = default)
+    public Task<DiscordChannel?> ModifyChannelAsync(string channelId, string? name = null, int? type = null, string? parentId = null, CancellationToken ct = default)
     {
         var payload = new
         {
@@ -474,7 +474,7 @@ public sealed class DiscordBot : IDiscordBot
             type,
             parent_id = parentId
         };
-        return _rest.PatchChannelAsync<Channel>(channelId, payload, ct);
+        return _rest.PatchChannelAsync<DiscordChannel>(channelId, payload, ct);
     }
 
     /// <summary>
@@ -489,8 +489,8 @@ public sealed class DiscordBot : IDiscordBot
     /// Gets a specific message from a channel.
     /// Example: var message = await bot.GetMessageAsync(channelId, messageId);
     /// </summary>
-    public Task<Message?> GetMessageAsync(string channelId, string messageId, CancellationToken ct = default)
-        => _rest.GetChannelMessageAsync<Message>(channelId, messageId, ct);
+    public Task<DiscordMessage?> GetMessageAsync(string channelId, string messageId, CancellationToken ct = default)
+        => _rest.GetChannelMessageAsync<DiscordMessage>(channelId, messageId, ct);
 
     /// <summary>
     /// Gets recent messages from a channel (up to 100).
@@ -500,24 +500,25 @@ public sealed class DiscordBot : IDiscordBot
     /// <param name="limit">Number of messages to retrieve (1-100, default 50)</param>
     /// <param name="before">Get messages before this message ID</param>
     /// <param name="after">Get messages after this message ID</param>
-    public Task<Message[]?> GetMessagesAsync(string channelId, int limit = 50, string? before = null, string? after = null, CancellationToken ct = default)
+    public Task<DiscordMessage[]?> GetMessagesAsync(string channelId, int limit = 50, string? before = null, string? after = null, CancellationToken ct = default)
     {
-        if (limit < 1 || limit > 100) throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100");
-        return _rest.GetChannelMessagesAsync<Message[]>(channelId, limit, before, after, ct);
+        return limit is < 1 or > 100 
+            ? throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100") 
+            : _rest.GetChannelMessagesAsync<DiscordMessage[]>(channelId, limit, before, after, ct);
     }
 
     /// <summary>
     /// Edits a message. Only works on messages sent by the bot.
     /// Example: await bot.EditMessageAsync(channelId, messageId, "Updated content");
     /// </summary>
-    public Task<Message?> EditMessageAsync(string channelId, string messageId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+    public Task<DiscordMessage?> EditMessageAsync(string channelId, string messageId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
     {
         var payload = new
         {
             content,
-            embeds = embed is null ? null : new[] { embed.ToModel() }
+            embeds = embed is null ? null : new[] { embed.Build() }
         };
-        return _rest.PatchMessageAsync<Message>(channelId, messageId, payload, ct);
+        return _rest.PatchMessageAsync<DiscordMessage>(channelId, messageId, payload, ct);
     }
 
     /// <summary>
@@ -559,7 +560,7 @@ public sealed class DiscordBot : IDiscordBot
     /// Example: await bot.AddReactionAsync(channelId, messageId, Emoji.Unicode("👍"));
     /// Example: await bot.AddReactionAsync(channelId, messageId, Emoji.Custom("custom", "123456789"));
     /// </summary>
-    public Task AddReactionAsync(string channelId, string messageId, Emoji emoji, CancellationToken ct = default)
+    public Task AddReactionAsync(string channelId, string messageId, DiscordEmoji emoji, CancellationToken ct = default)
     {
         string encoded = System.Web.HttpUtility.UrlEncode(emoji.GetReactionFormat());
         return _rest.AddReactionAsync(channelId, messageId, encoded, ct);
@@ -589,11 +590,11 @@ public sealed class DiscordBot : IDiscordBot
     /// Gets users who reacted with a specific emoji (up to 100).
     /// Example: var users = await bot.GetReactionsAsync(channelId, messageId, "👍");
     /// </summary>
-    public Task<User[]?> GetReactionsAsync(string channelId, string messageId, string emoji, int limit = 25, CancellationToken ct = default)
+    public Task<DiscordUser[]?> GetReactionsAsync(string channelId, string messageId, string emoji, int limit = 25, CancellationToken ct = default)
     {
         if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100");
         string encoded = System.Web.HttpUtility.UrlEncode(emoji);
-        return _rest.GetReactionsAsync<User[]>(channelId, messageId, encoded, limit, ct);
+        return _rest.GetReactionsAsync<DiscordUser[]>(channelId, messageId, encoded, limit, ct);
     }
 
     /// <summary>
@@ -633,8 +634,8 @@ public sealed class DiscordBot : IDiscordBot
     /// Gets all pinned messages in a channel (up to 50).
     /// Example: var pinnedMessages = await bot.GetPinnedMessagesAsync(channelId);
     /// </summary>
-    public Task<Message[]?> GetPinnedMessagesAsync(string channelId, CancellationToken ct = default)
-        => _rest.GetPinnedMessagesAsync<Message[]>(channelId, ct);
+    public Task<DiscordMessage[]?> GetPinnedMessagesAsync(string channelId, CancellationToken ct = default)
+        => _rest.GetPinnedMessagesAsync<DiscordMessage[]>(channelId, ct);
 
     // ---- Member moderation ----
 
@@ -748,15 +749,15 @@ public sealed class DiscordBot : IDiscordBot
     /// Gets a member from a guild by user ID.
     /// Example: var member = await bot.GetMemberAsync(guildId, userId);
     /// </summary>
-    public Task<Member?> GetMemberAsync(string guildId, string userId, CancellationToken ct = default)
-        => _rest.GetAsync<Member>($"/guilds/{guildId}/members/{userId}", ct);
+    public Task<DiscordMember?> GetMemberAsync(string guildId, string userId, CancellationToken ct = default)
+        => _rest.GetAsync<DiscordMember>($"/guilds/{guildId}/members/{userId}", ct);
 
     /// <summary>
     /// Gets a channel by ID.
     /// Example: var channel = await bot.GetChannelAsync(channelId);
     /// </summary>
-    public Task<Channel?> GetChannelAsync(string channelId, CancellationToken ct = default)
-        => _rest.GetAsync<Channel>($"/channels/{channelId}", ct);
+    public Task<DiscordChannel?> GetChannelAsync(string channelId, CancellationToken ct = default)
+        => _rest.GetAsync<DiscordChannel>($"/channels/{channelId}", ct);
 
     /// <summary>
     /// Gets information about the bot's application.
@@ -781,18 +782,18 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public async Task<bool> MemberHasRoleAsync(string guildId, string userId, string roleId, CancellationToken ct = default)
     {
-        Member? member = await GetMemberAsync(guildId, userId, ct).ConfigureAwait(false);
-        return member?.HasRole(roleId) ?? false;
+        DiscordMember? member = await GetMemberAsync(guildId, userId, ct).ConfigureAwait(false);
+        return member?.HasRole(ulong.Parse(roleId)) ?? false;
     }
 
     /// <summary>
     /// Gets the @everyone role for a guild.
     /// Example: var everyoneRole = await bot.GetEveryoneRoleAsync(guildId);
     /// </summary>
-    public async Task<Role?> GetEveryoneRoleAsync(string guildId, CancellationToken ct = default)
+    public async Task<DiscordRole?> GetEveryoneRoleAsync(string guildId, CancellationToken ct = default)
     {
-        Role[]? roles = await GetGuildRolesAsync(guildId, ct).ConfigureAwait(false);
-        return roles?.FirstOrDefault(r => r.Id == guildId);
+        DiscordRole[]? roles = await GetGuildRolesAsync(guildId, ct).ConfigureAwait(false);
+        return roles?.FirstOrDefault(r => r.Id == ulong.Parse(guildId));
     }
 
     /// <summary>
@@ -805,11 +806,11 @@ public sealed class DiscordBot : IDiscordBot
         var dmPayload = new { recipient_id = userId };
 
         // Create the DM channel - Discord will return the existing one if it exists
-        Channel? dmChannel = await _rest.PostAsync<Channel>("/users/@me/channels", dmPayload, ct).ConfigureAwait(false);
+        DiscordChannel? dmChannel = await _rest.PostAsync<DiscordChannel>("/users/@me/channels", dmPayload, ct).ConfigureAwait(false);
 
         if (dmChannel is not null)
         {
-            await SendMessageAsync(dmChannel.Id, content, embed, ct).ConfigureAwait(false);
+            await SendMessageAsync(dmChannel.Id.ToString(), content, embed, ct).ConfigureAwait(false);
         }
     }
 
@@ -820,13 +821,23 @@ public sealed class DiscordBot : IDiscordBot
 
     private void OnInteractionCreate(object? sender, InteractionCreateEvent e)
     {
-        switch (e)
+        // Populate Guild from cache if this is a guild interaction
+        InteractionCreateEvent enriched = e;
+        if (e.GuildId is not null && ulong.TryParse(e.GuildId, out ulong guildId))
+        {
+            if (_cache.TryGetGuild(guildId, out DiscordGuild? guild))
+            {
+                enriched = e with { Guild = guild };
+            }
+        }
+
+        switch (enriched)
         {
             case { Type: InteractionType.ApplicationCommand, Data: not null }:
-                _ = _slashCommands.HandleAsync(e, _rest, _cts.Token);
+                _ = _slashCommands.HandleAsync(enriched, _rest, _cts.Token);
                 break;
             case { Type: InteractionType.MessageComponent, Component: not null } or { Type: InteractionType.ModalSubmit, Modal: not null }:
-                _ = _components.HandleAsync(e, _rest, _cts.Token);
+                _ = _components.HandleAsync(enriched, _rest, _cts.Token);
                 break;
         }
     }
@@ -850,7 +861,7 @@ public sealed class DiscordBot : IDiscordBot
         // Cache threads from GUILD_CREATE (threads are channels)
         if (evt.Threads is not null && evt.Threads.Length > 0)
         {
-            foreach (Channel thread in evt.Threads)
+            foreach (DiscordChannel thread in evt.Threads)
             {
                 _cache.UpsertChannel(evt.Guild.Id, thread);
             }
@@ -875,16 +886,16 @@ public sealed class DiscordBot : IDiscordBot
         }
     }
 
-    private void OnGuildUpdate(object? sender, Guild g)
+    private void OnGuildUpdate(object? sender, DiscordGuild g)
     {
         _cache.UpsertGuild(g);
         DiscordEvents.RaiseGuildUpdated(this, new GuildEvent { Guild = g });
     }
 
-    private void OnGuildDelete(object? sender, string gid)
+    private void OnGuildDelete(object? sender, ulong gid)
     {
         _cache.RemoveGuild(gid);
-        DiscordEvents.RaiseGuildRemoved(this, gid);
+        DiscordEvents.RaiseGuildRemoved(this, gid.ToString());
     }
 
     private void OnGuildEmojisUpdate(object? sender, GuildEmojisUpdateEvent e)
@@ -892,115 +903,118 @@ public sealed class DiscordBot : IDiscordBot
         _cache.SetEmojis(e.GuildId, e.Emojis);
     }
 
-    private void OnChannelCreate(object? sender, Channel ch)
+    private void OnChannelCreate(object? sender, DiscordChannel ch)
     {
-        string? gid = ch.Guild_Id;
+        ulong? gid = ch.Guild_Id;
         if (gid is null)
         {
             _logger.Log(LogLevel.Information, $"DM channel created (id={ch.Id}, type={ch.Type}).");
             return; // do not cache DM channels
         }
-        _cache.UpsertChannel(gid, ch);
-        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        _cache.UpsertChannel(gid.Value, ch);
+        DiscordGuild guild = _cache.TryGetGuild(gid.Value, out DiscordGuild g) ? g : new DiscordGuild { Id = gid.Value, Name = string.Empty };
         DiscordEvents.RaiseChannelCreated(this, new ChannelEvent { Channel = ch, Guild = guild });
     }
 
-    private void OnChannelUpdate(object? sender, Channel ch)
+    private void OnChannelUpdate(object? sender, DiscordChannel ch)
     {
-        string? gid = ch.Guild_Id;
+        ulong? gid = ch.Guild_Id;
         if (gid is null)
         {
             _logger.Log(LogLevel.Information, $"DM channel updated (id={ch.Id}, type={ch.Type}).");
             return;
         }
-        _cache.UpsertChannel(gid, ch);
-        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        _cache.UpsertChannel(gid.Value, ch);
+        DiscordGuild guild = _cache.TryGetGuild(gid.Value, out DiscordGuild g) ? g : new DiscordGuild { Id = gid.Value, Name = string.Empty };
         DiscordEvents.RaiseChannelUpdated(this, new ChannelEvent { Channel = ch, Guild = guild });
     }
 
-    private void OnChannelDelete(object? sender, Channel ch)
+    private void OnChannelDelete(object? sender, DiscordChannel ch)
     {
-        string? gid = ch.Guild_Id;
+        ulong? gid = ch.Guild_Id;
         if (gid is null)
         {
             _logger.Log(LogLevel.Information, $"DM channel deleted (id={ch.Id}, type={ch.Type}).");
             return;
         }
-        _cache.RemoveChannel(gid, ch.Id);
-        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        _cache.RemoveChannel(gid.Value, ch.Id);
+        DiscordGuild guild = _cache.TryGetGuild(gid.Value, out DiscordGuild g) ? g : new DiscordGuild { Id = gid.Value, Name = string.Empty };
         DiscordEvents.RaiseChannelDeleted(this, new ChannelEvent { Channel = ch, Guild = guild });
     }
 
     private void OnGuildRoleCreate(object? sender, GatewayRoleEvent e)
     {
         _cache.UpsertRole(e.GuildId, e.Role);
-        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
         DiscordEvents.RaiseRoleCreated(this, new RoleEvent { Role = e.Role, Guild = guild });
     }
 
     private void OnGuildRoleUpdate(object? sender, GatewayRoleEvent e)
     {
         _cache.UpsertRole(e.GuildId, e.Role);
-        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
         DiscordEvents.RaiseRoleUpdated(this, new RoleEvent { Role = e.Role, Guild = guild });
     }
 
     private void OnGuildRoleDelete(object? sender, GatewayRoleEvent e)
     {
         _cache.RemoveRole(e.GuildId, e.Role.Id);
-        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
         DiscordEvents.RaiseRoleDeleted(this, new RoleEvent { Role = e.Role, Guild = guild });
     }
 
-    private void OnThreadCreate(object? sender, Channel thread)
+    private void OnThreadCreate(object? sender, DiscordChannel thread)
     {
-        string? gid = thread.Guild_Id;
+        ulong? gid = thread.Guild_Id;
         if (gid is null) return;
-        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(gid.Value, out DiscordGuild g) ? g : new DiscordGuild { Id = gid.Value, Name = string.Empty };
         DiscordEvents.RaiseThreadCreated(this, new ThreadEvent { Thread = thread, Guild = guild });
     }
 
-    private void OnThreadUpdate(object? sender, Channel thread)
+    private void OnThreadUpdate(object? sender, DiscordChannel thread)
     {
-        string? gid = thread.Guild_Id;
+        ulong? gid = thread.Guild_Id;
         if (gid is null) return;
-        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(gid.Value, out DiscordGuild g) ? g : new DiscordGuild { Id = gid.Value, Name = string.Empty };
         DiscordEvents.RaiseThreadUpdated(this, new ThreadEvent { Thread = thread, Guild = guild });
     }
 
-    private void OnThreadDelete(object? sender, Channel thread)
+    private void OnThreadDelete(object? sender, DiscordChannel thread)
     {
-        string? gid = thread.Guild_Id;
+        ulong? gid = thread.Guild_Id;
         if (gid is null) return;
-        Guild guild = _cache.TryGetGuild(gid, out Guild g) ? g : new Guild { Id = gid, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(gid.Value, out DiscordGuild g) ? g : new DiscordGuild { Id = gid.Value, Name = string.Empty };
         DiscordEvents.RaiseThreadDeleted(this, new ThreadEvent { Thread = thread, Guild = guild });
     }
 
     private void OnGuildMemberAdd(object? sender, GatewayMemberEvent e)
     {
         _cache.UpsertMember(e.GuildId, e.Member);
-        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
         DiscordEvents.RaiseMemberJoined(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
     }
 
     private void OnGuildMemberUpdate(object? sender, GatewayMemberEvent e)
     {
         _cache.UpsertMember(e.GuildId, e.Member);
-        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
         DiscordEvents.RaiseMemberUpdated(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
     }
 
     private void OnGuildMemberRemove(object? sender, GatewayMemberEvent e)
     {
         _cache.RemoveMember(e.GuildId, e.Member.User.Id);
-        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
         DiscordEvents.RaiseMemberLeft(this, new MemberEvent { Member = e.Member, User = e.Member.User, Guild = guild });
     }
 
     private void OnGuildMembersChunk(object? sender, GuildMembersChunkEvent e)
     {
+        // Raise public event
+        DiscordEvents.RaiseGuildMembersChunk(this, e);
+
         // Accumulate members from all chunks
-        foreach (Member member in e.Members)
+        foreach (DiscordMember member in e.Members)
         {
             _cache.UpsertMember(e.GuildId, member);
         }
@@ -1008,7 +1022,7 @@ public sealed class DiscordBot : IDiscordBot
         _logger.Log(LogLevel.Debug, $"Received member chunk {e.ChunkIndex + 1}/{e.ChunkCount} for guild {e.GuildId} ({e.Members.Length} members)");
 
         // Check if this was the last chunk
-        if (e.ChunkIndex == e.ChunkCount - 1 && _pendingMemberChunks.TryRemove(e.GuildId, out int _) && _cache.TryGetGuild(e.GuildId, out Guild guild))
+        if (e.ChunkIndex == e.ChunkCount - 1 && _pendingMemberChunks.TryRemove(e.GuildId, out int _) && _cache.TryGetGuild(e.GuildId, out DiscordGuild guild))
         {
             _logger.Log(LogLevel.Information, $"Guild {guild.Name} ({e.GuildId}) is fully loaded");
             DiscordEvents.RaiseGuildReady(this, new GuildEvent { Guild = guild });
@@ -1018,17 +1032,34 @@ public sealed class DiscordBot : IDiscordBot
     private void OnGuildBanAdd(object? sender, GatewayUserEvent e)
     {
         _cache.RemoveMember(e.GuildId, e.User.Id);
-        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
         DiscordEvents.RaiseBanAdded(this, new BanEvent { User = e.User, Guild = guild, Member = null });
     }
 
     private void OnGuildBanRemove(object? sender, GatewayUserEvent e)
     {
-        Guild guild = _cache.TryGetGuild(e.GuildId, out Guild g) ? g : new Guild { Id = e.GuildId, Name = string.Empty };
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
         DiscordEvents.RaiseBanRemoved(this, new BanEvent { User = e.User, Guild = guild, Member = null });
     }
 
-    private void OnUserUpdate(object? sender, User u) => DiscordEvents.RaiseBotUserUpdated(this, new BotUserEvent { User = u });
+    private void OnUserUpdate(object? sender, DiscordUser u) => DiscordEvents.RaiseBotUserUpdated(this, new BotUserEvent { User = u });
+
+    private void OnGuildAuditLogEntryCreate(object? sender, GatewayAuditLogEvent e)
+    {
+        DiscordGuild guild = _cache.TryGetGuild(e.GuildId, out DiscordGuild g) ? g : new DiscordGuild { Id = e.GuildId, Name = string.Empty };
+        DiscordUser? user = e.Entry.UserId.HasValue && _cache.TryGetUser(e.Entry.UserId.Value, out DiscordUser u) ? u : null;
+        DiscordUser? targetUser = e.Entry.TargetId.HasValue && _cache.TryGetUser(e.Entry.TargetId.Value, out DiscordUser tu) ? tu : null;
+
+        AuditLogEvent evt = new()
+        {
+            Entry = e.Entry,
+            Guild = guild,
+            User = user,
+            TargetUser = targetUser
+        };
+        DiscordEvents.RaiseAuditLogEntryCreated(this, evt);
+    }
+
     private void OnMessageUpdate(object? sender, MessageUpdateEvent e) => DiscordEvents.RaiseMessageUpdated(this, e);
     private void OnMessageDelete(object? sender, MessageEvent e) => DiscordEvents.RaiseMessageDeleted(this, e);
     private void OnMessageDeleteBulk(object? sender, MessageEvent e) => DiscordEvents.RaiseMessagesBulkDeleted(this, e);
@@ -1054,11 +1085,9 @@ public sealed class DiscordBot : IDiscordBot
         _gateway.MessageCreate += (_, msg) =>
         {
             // DM when no guild id present
-            if (msg.GuildId is null)
-            {
-                CommandContext ctx = new(msg.ChannelId, msg, _rest);
-                DiscordEvents.RaiseDirectMessageReceived(this, new DirectMessageEvent { Message = msg, Context = ctx });
-            }
+            if (msg.GuildId is not null) return;
+            CommandContext ctx = new(msg.ChannelId, msg, _rest);
+            DiscordEvents.RaiseDirectMessageReceived(this, new DirectMessageEvent { Message = msg, Context = ctx });
         };
 
         // Slash interactions
@@ -1097,6 +1126,9 @@ public sealed class DiscordBot : IDiscordBot
 
         // Bot user change
         _gateway.UserUpdate += OnUserUpdate;
+
+        // Audit log events
+        _gateway.GuildAuditLogEntryCreate += OnGuildAuditLogEntryCreate;
 
         // Message events
         _gateway.MessageUpdate += OnMessageUpdate;
@@ -1145,7 +1177,7 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     public static DiscordBot FromOptions(DiscordBotOptions options)
     {
-        if (options is null) throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(options);
         if (string.IsNullOrWhiteSpace(options.Token)) throw new InvalidOperationException("Token is required");
 
         DiscordBot bot = new(
@@ -1303,8 +1335,8 @@ public sealed class DiscordBot : IDiscordBot
         /// </summary>
         public Builder WithSharding(int shardId, int totalShards)
         {
-            if (shardId < 0) throw new ArgumentOutOfRangeException(nameof(shardId));
-            if (totalShards < 1) throw new ArgumentOutOfRangeException(nameof(totalShards));
+            ArgumentOutOfRangeException.ThrowIfNegative(shardId);
+            ArgumentOutOfRangeException.ThrowIfLessThan(totalShards, 1);
             if (shardId >= totalShards) throw new ArgumentException($"ShardId {shardId} must be less than TotalShards {totalShards}");
 
             _shardMode = ShardMode.SingleProcess;
@@ -1390,30 +1422,30 @@ public sealed class DiscordBot : IDiscordBot
         {
             if (_preloadGuilds || _preloadChannels || _preloadMembers)
             {
-                Guild[] guilds = await _rest.GetAsync<Guild[]>("/users/@me/guilds", ct).ConfigureAwait(false) ?? [];
+                DiscordGuild[] guilds = await _rest.GetAsync<DiscordGuild[]>("/users/@me/guilds", ct).ConfigureAwait(false) ?? [];
                 _cache.ReplaceGuilds(guilds);
 
                 if (_preloadChannels)
                 {
-                    foreach (Guild g in guilds)
+                    foreach (DiscordGuild g in guilds)
                     {
-                        Channel[] ch = await GetGuildChannelsAsync(g.Id, ct).ConfigureAwait(false) ?? [];
+                        DiscordChannel[] ch = await GetGuildChannelsAsync(g.Id.ToString(), ct).ConfigureAwait(false) ?? [];
                         _cache.SetChannels(g.Id, ch);
                     }
                 }
 
                 if (_preloadMembers)
                 {
-                    foreach (Guild g in guilds)
+                    foreach (DiscordGuild g in guilds)
                     {
-                        List<Member> all = new(1024);
+                        List<DiscordMember> all = new(1024);
                         string? after = null;
                         while (true)
                         {
-                            Member[]? page = await ListGuildMembersAsync(g.Id, 1000, after, ct).ConfigureAwait(false);
+                            DiscordMember[]? page = await ListGuildMembersAsync(g.Id.ToString(), 1000, after, ct).ConfigureAwait(false);
                             if (page is null || page.Length == 0) break;
                             all.AddRange(page);
-                            after = page[^1].User.Id;
+                            after = page[^1].User.Id.ToString();
                             if (page.Length < 1000) break;
                         }
                         _cache.SetMembers(g.Id, all);
@@ -1431,7 +1463,7 @@ public sealed class DiscordBot : IDiscordBot
     /// Loads complete guild data after GUILD_CREATE, ensuring all channels and members are cached.
     /// Fires GuildReady event when complete.
     /// </summary>
-    private async Task LoadCompleteGuildDataAsync(string guildId, Channel[]? guildCreateChannels, Member[]? guildCreateMembers)
+    private async Task LoadCompleteGuildDataAsync(ulong guildId, DiscordChannel[]? guildCreateChannels, DiscordMember[]? guildCreateMembers)
     {
         await Task.Delay(100); // Small delay to let connection stabilize
 
@@ -1444,7 +1476,7 @@ public sealed class DiscordBot : IDiscordBot
             _logger.Log(LogLevel.Debug, $"Loading channels for guild {guildId} via REST");
             try
             {
-                Channel[] channels = await GetGuildChannelsAsync(guildId, _cts.Token).ConfigureAwait(false) ?? [];
+                DiscordChannel[] channels = await GetGuildChannelsAsync(guildId.ToString(), _cts.Token).ConfigureAwait(false) ?? [];
                 _cache.SetChannels(guildId, channels);
                 needsChannels = true;
             }
@@ -1462,7 +1494,7 @@ public sealed class DiscordBot : IDiscordBot
             {
                 // Register that we're waiting for member chunks
                 _pendingMemberChunks.TryAdd(guildId, 1);
-                await _gateway!.RequestGuildMembersAsync(guildId);
+                await _gateway!.RequestGuildMembersAsync(guildId.ToString());
                 needsMembers = true;
             }
             catch (Exception ex)
@@ -1475,7 +1507,7 @@ public sealed class DiscordBot : IDiscordBot
         // If we didn't need to load anything asynchronously, fire GuildReady immediately
         if (!needsMembers && !needsChannels)
         {
-            if (_cache.TryGetGuild(guildId, out Guild guild))
+            if (_cache.TryGetGuild(guildId, out DiscordGuild guild))
             {
                 _logger.Log(LogLevel.Information, $"Guild {guild.Name} ({guildId}) is fully loaded");
                 DiscordEvents.RaiseGuildReady(this, new GuildEvent { Guild = guild });
@@ -1486,7 +1518,7 @@ public sealed class DiscordBot : IDiscordBot
             // We loaded channels but don't need members (no GuildMembers intent)
             // Fire GuildReady after a small delay to ensure channels are cached
             await Task.Delay(50);
-            if (_cache.TryGetGuild(guildId, out Guild guild))
+            if (_cache.TryGetGuild(guildId, out DiscordGuild guild))
             {
                 _logger.Log(LogLevel.Information, $"Guild {guild.Name} ({guildId}) is fully loaded");
                 DiscordEvents.RaiseGuildReady(this, new GuildEvent { Guild = guild });

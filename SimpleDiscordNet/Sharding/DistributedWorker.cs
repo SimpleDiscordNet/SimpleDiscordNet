@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using SimpleDiscordNet.Logging;
 using SimpleDiscordNet.Sharding.Models;
@@ -85,13 +86,13 @@ internal sealed class DistributedWorker : IDisposable
     {
         try
         {
-            var capabilities = new WorkerCapabilities(
+            WorkerCapabilities capabilities = new(
                 MemoryMb: GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024 * 1024),
                 CpuCores: Environment.ProcessorCount,
                 Platform: Environment.OSVersion.Platform.ToString()
             );
 
-            var request = new WorkerRegistrationRequest(
+            WorkerRegistrationRequest request = new(
                 ProcessId: _processId,
                 ListenUrl: _workerUrl,
                 MaxShards: null,
@@ -99,7 +100,7 @@ internal sealed class DistributedWorker : IDisposable
                 Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             );
 
-            var response = await _client.PostAsync<WorkerRegistrationRequest, WorkerRegistrationResponse>(
+            WorkerRegistrationResponse? response = await _client.PostAsync<WorkerRegistrationRequest, WorkerRegistrationResponse>(
                 $"{_coordinatorUrl}/register",
                 request,
                 ct
@@ -116,7 +117,7 @@ internal sealed class DistributedWorker : IDisposable
             _logger.Log(LogLevel.Information, $"Registered with coordinator: {_totalShards} total shards, assigned shards: [{string.Join(", ", response.AssignedShards)}]");
 
             // Start assigned shards
-            foreach (var shardId in response.AssignedShards)
+            foreach (int shardId in response.AssignedShards)
             {
                 await _shardManager.StartShardAsync(shardId, _totalShards, ct).ConfigureAwait(false);
             }
@@ -130,7 +131,7 @@ internal sealed class DistributedWorker : IDisposable
 
     private async Task HandleAssignmentAsync(System.Net.HttpListenerContext context)
     {
-        var assignment = await _server.ReadJsonAsync<ShardAssignment>(context);
+        ShardAssignment? assignment = await _server.ReadJsonAsync<ShardAssignment>(context);
         if (assignment == null)
         {
             await _server.RespondAsync(context, 400, new { error = "Invalid assignment" });
@@ -140,7 +141,7 @@ internal sealed class DistributedWorker : IDisposable
         try
         {
             // ShardAssignment has Shards: List<int>
-            foreach (var shardId in assignment.Shards)
+            foreach (int shardId in assignment.Shards)
             {
                 await _shardManager.StartShardAsync(shardId, _totalShards, CancellationToken.None).ConfigureAwait(false);
                 _logger.Log(LogLevel.Information, $"Started new shard assignment: {shardId}/{_totalShards} - Reason: {assignment.Reason}");
@@ -157,7 +158,7 @@ internal sealed class DistributedWorker : IDisposable
 
     private async Task HandleMigrationAsync(System.Net.HttpListenerContext context)
     {
-        var migration = await _server.ReadJsonAsync<ShardMigrationRequest>(context);
+        ShardMigrationRequest? migration = await _server.ReadJsonAsync<ShardMigrationRequest>(context);
         if (migration == null)
         {
             await _server.RespondAsync(context, 400, new { error = "Invalid migration" });
@@ -185,7 +186,7 @@ internal sealed class DistributedWorker : IDisposable
 
     private async Task HandleSuccessionAsync(System.Net.HttpListenerContext context)
     {
-        var update = await _server.ReadJsonAsync<SuccessionUpdate>(context);
+        SuccessionUpdate? update = await _server.ReadJsonAsync<SuccessionUpdate>(context);
         if (update == null)
         {
             await _server.RespondAsync(context, 400, new { error = "Invalid succession update" });
@@ -193,15 +194,15 @@ internal sealed class DistributedWorker : IDisposable
         }
 
         _succession.LoadFrom(update.Succession);
-        var myPosition = _succession.GetPosition(_processId);
+        int myPosition = _succession.GetPosition(_processId);
         _logger.Log(LogLevel.Information, $"Succession updated: I am at position {myPosition} (1 = coordinator, 2 = next)");
 
-        await _server.RespondAsync(context, 204);
+        await ShardHttpServer.RespondAsync(context, 204);
     }
 
     private async Task HandleResumedAnnouncementAsync(System.Net.HttpListenerContext context)
     {
-        var announcement = await _server.ReadJsonAsync<CoordinatorResumedAnnouncement>(context);
+        CoordinatorResumedAnnouncement? announcement = await _server.ReadJsonAsync<CoordinatorResumedAnnouncement>(context);
         if (announcement == null)
         {
             await _server.RespondAsync(context, 400, new { error = "Invalid announcement" });
@@ -232,7 +233,7 @@ internal sealed class DistributedWorker : IDisposable
 
     private async Task HandleHealthAsync(System.Net.HttpListenerContext context)
     {
-        var response = new HealthCheckResponse(
+        HealthCheckResponse response = new HealthCheckResponse(
             Status: "healthy",
             Shards: _shardManager.GetShardIds().ToList(),
             IsCoordinator: false,
@@ -248,8 +249,8 @@ internal sealed class DistributedWorker : IDisposable
 
         try
         {
-            var shardInfos = _shardManager.GetAllShardInfos();
-            var shardMetrics = shardInfos.Select(s => new ShardMetrics(
+            ShardInfo[] shardInfos = _shardManager.GetAllShardInfos();
+            List<ShardMetrics> shardMetrics = shardInfos.Select(s => new ShardMetrics(
                 Id: s.Id,
                 Status: s.Status.ToString(),
                 GuildCount: s.GuildCount,
@@ -258,7 +259,7 @@ internal sealed class DistributedWorker : IDisposable
                 CommandsPerSecond: s.CommandsPerSecond
             )).ToList();
 
-            var metrics = new WorkerMetrics(
+            WorkerMetrics metrics = new(
                 ProcessId: _processId,
                 Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 CpuUsage: GetCpuUsage(),
@@ -289,19 +290,19 @@ internal sealed class DistributedWorker : IDisposable
     {
         try
         {
-            var process = System.Diagnostics.Process.GetCurrentProcess();
-            var startTime = DateTime.UtcNow;
-            var startCpuTime = process.TotalProcessorTime;
+            Process process = Process.GetCurrentProcess();
+            DateTime startTime = DateTime.UtcNow;
+            TimeSpan startCpuTime = process.TotalProcessorTime;
 
-            System.Threading.Thread.Sleep(100);
+            Thread.Sleep(100);
 
-            var endTime = DateTime.UtcNow;
-            var endCpuTime = process.TotalProcessorTime;
+            DateTime endTime = DateTime.UtcNow;
+            TimeSpan endCpuTime = process.TotalProcessorTime;
 
-            var cpuUsedMs = (endCpuTime - startCpuTime).TotalMilliseconds;
-            var totalPassedMs = (endTime - startTime).TotalMilliseconds;
+            double cpuUsedMs = (endCpuTime - startCpuTime).TotalMilliseconds;
+            double totalPassedMs = (endTime - startTime).TotalMilliseconds;
 
-            var cpuUsageTotal = cpuUsedMs / (Environment.ProcessorCount * totalPassedMs);
+            double cpuUsageTotal = cpuUsedMs / (Environment.ProcessorCount * totalPassedMs);
             return Math.Max(0, Math.Min(1, cpuUsageTotal));
         }
         catch
@@ -314,7 +315,7 @@ internal sealed class DistributedWorker : IDisposable
     {
         try
         {
-            return System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
+            return Process.GetCurrentProcess().WorkingSet64;
         }
         catch
         {

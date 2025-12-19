@@ -1,8 +1,8 @@
 namespace SimpleDiscordNet.Entities;
 
-public sealed record Guild
+public sealed record DiscordGuild
 {
-    public required string Id { get; init; }
+    public required ulong Id { get; init; }
     public required string Name { get; init; }
 
     /// <summary>Icon hash</summary>
@@ -15,10 +15,10 @@ public sealed record Guild
     public string? Discovery_Splash { get; init; }
 
     /// <summary>ID of owner</summary>
-    public string? Owner_Id { get; init; }
+    public ulong? Owner_Id { get; init; }
 
     /// <summary>ID of AFK channel</summary>
-    public string? Afk_Channel_Id { get; init; }
+    public ulong? Afk_Channel_Id { get; init; }
 
     /// <summary>AFK timeout in seconds</summary>
     public int? Afk_Timeout { get; init; }
@@ -33,10 +33,10 @@ public sealed record Guild
     public int? Explicit_Content_Filter { get; init; }
 
     /// <summary>Roles in the guild</summary>
-    public Role[]? Roles { get; init; }
+    public DiscordRole[]? Roles { get; init; }
 
     /// <summary>Custom guild emojis</summary>
-    public Emoji[]? Emojis { get; init; }
+    public DiscordEmoji[]? Emojis { get; init; }
 
     /// <summary>Enabled guild features</summary>
     public string[]? Features { get; init; }
@@ -45,13 +45,13 @@ public sealed record Guild
     public int? Mfa_Level { get; init; }
 
     /// <summary>System channel ID</summary>
-    public string? System_Channel_Id { get; init; }
+    public ulong? System_Channel_Id { get; init; }
 
     /// <summary>System channel flags</summary>
     public int? System_Channel_Flags { get; init; }
 
     /// <summary>Rules channel ID</summary>
-    public string? Rules_Channel_Id { get; init; }
+    public ulong? Rules_Channel_Id { get; init; }
 
     /// <summary>Maximum number of presences for the guild</summary>
     public int? Max_Presences { get; init; }
@@ -78,7 +78,7 @@ public sealed record Guild
     public string? Preferred_Locale { get; init; }
 
     /// <summary>Public updates channel ID</summary>
-    public string? Public_Updates_Channel_Id { get; init; }
+    public ulong? Public_Updates_Channel_Id { get; init; }
 
     /// <summary>NSFW level</summary>
     public int? Nsfw_Level { get; init; }

@@ -1,6 +1,6 @@
 ### SimpleDiscordDotNet Wiki
 
-**[🏠 Home](Home)**
+**[🏠 Home](Home)** *(v1.4.0)*
 
 ---
 
@@ -28,7 +28,7 @@
 ---
 
 ### Advanced
-- [Sharding](Sharding) **⚡ NEW**
+- [Sharding](Sharding) **🔒 HTTPS in v1.4.0**
 - [Performance Optimizations](Performance-Optimizations)
 - [Rate Limit Monitoring](Rate-Limit-Monitoring)
 - [API Reference](API-Reference)

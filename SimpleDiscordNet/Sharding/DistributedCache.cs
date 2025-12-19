@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using SimpleDiscordNet.Entities;
 using SimpleDiscordNet.Logging;
+using SimpleDiscordNet.Sharding.Models;
 
 namespace SimpleDiscordNet.Sharding;
 
@@ -26,10 +27,10 @@ internal sealed class DistributedCache
     /// Gets a guild by ID, querying the appropriate worker based on shard calculation.
     /// Example: var guild = await cache.GetGuildAsync("123456789", peers);
     /// </summary>
-    public async Task<Guild?> GetGuildAsync(string guildId, ConcurrentDictionary<string, PeerNode> peers, CancellationToken ct = default)
+    public async Task<DiscordGuild?> GetGuildAsync(string guildId, ConcurrentDictionary<string, PeerNode> peers, CancellationToken ct = default)
     {
-        var shardId = ShardCalculator.CalculateShardId(guildId.AsSpan(), _totalShards);
-        var worker = FindWorkerForShard(shardId, peers);
+        int shardId = ShardCalculator.CalculateShardId(guildId.AsSpan(), _totalShards);
+        PeerNode? worker = FindWorkerForShard(shardId, peers);
 
         if (worker == null)
         {
@@ -39,13 +40,13 @@ internal sealed class DistributedCache
 
         try
         {
-            var state = worker.ToState();
+            PeerNodeState state = worker.ToState();
             // Query worker's cache endpoint
-            return await _client.GetAsync<Guild>($"{state.Url}/cache/guild/{guildId}", ct).ConfigureAwait(false);
+            return await _client.GetAsync<DiscordGuild>($"{state.Url}/cache/guild/{guildId}", ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            var state = worker.ToState();
+            PeerNodeState state = worker.ToState();
             _logger.Log(LogLevel.Error, $"Failed to query guild {guildId} from worker {state.ProcessId}: {ex.Message}", ex);
             return null;
         }
@@ -56,10 +57,10 @@ internal sealed class DistributedCache
     /// Requires guild ID to calculate shard.
     /// Example: var channel = await cache.GetChannelAsync("channel123", "guild456", peers);
     /// </summary>
-    public async Task<Channel?> GetChannelAsync(string channelId, string guildId, ConcurrentDictionary<string, PeerNode> peers, CancellationToken ct = default)
+    public async Task<DiscordChannel?> GetChannelAsync(string channelId, string guildId, ConcurrentDictionary<string, PeerNode> peers, CancellationToken ct = default)
     {
-        var shardId = ShardCalculator.CalculateShardId(guildId.AsSpan(), _totalShards);
-        var worker = FindWorkerForShard(shardId, peers);
+        int shardId = ShardCalculator.CalculateShardId(guildId.AsSpan(), _totalShards);
+        PeerNode? worker = FindWorkerForShard(shardId, peers);
 
         if (worker == null)
         {
@@ -69,12 +70,12 @@ internal sealed class DistributedCache
 
         try
         {
-            var state = worker.ToState();
-            return await _client.GetAsync<Channel>($"{state.Url}/cache/channel/{channelId}", ct).ConfigureAwait(false);
+            PeerNodeState state = worker.ToState();
+            return await _client.GetAsync<DiscordChannel>($"{state.Url}/cache/channel/{channelId}", ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            var state = worker.ToState();
+            PeerNodeState state = worker.ToState();
             _logger.Log(LogLevel.Error, $"Failed to query channel {channelId} from worker {state.ProcessId}: {ex.Message}", ex);
             return null;
         }
@@ -84,10 +85,10 @@ internal sealed class DistributedCache
     /// Gets a member by user and guild ID, querying the appropriate worker.
     /// Example: var member = await cache.GetMemberAsync("user123", "guild456", peers);
     /// </summary>
-    public async Task<Member?> GetMemberAsync(string userId, string guildId, ConcurrentDictionary<string, PeerNode> peers, CancellationToken ct = default)
+    public async Task<DiscordMember?> GetMemberAsync(string userId, string guildId, ConcurrentDictionary<string, PeerNode> peers, CancellationToken ct = default)
     {
-        var shardId = ShardCalculator.CalculateShardId(guildId.AsSpan(), _totalShards);
-        var worker = FindWorkerForShard(shardId, peers);
+        int shardId = ShardCalculator.CalculateShardId(guildId.AsSpan(), _totalShards);
+        PeerNode? worker = FindWorkerForShard(shardId, peers);
 
         if (worker == null)
         {
@@ -97,12 +98,12 @@ internal sealed class DistributedCache
 
         try
         {
-            var state = worker.ToState();
-            return await _client.GetAsync<Member>($"{state.Url}/cache/member/{guildId}/{userId}", ct).ConfigureAwait(false);
+            PeerNodeState state = worker.ToState();
+            return await _client.GetAsync<DiscordMember>($"{state.Url}/cache/member/{guildId}/{userId}", ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            var state = worker.ToState();
+            PeerNodeState state = worker.ToState();
             _logger.Log(LogLevel.Error, $"Failed to query member {userId} from worker {state.ProcessId}: {ex.Message}", ex);
             return null;
         }
@@ -128,7 +129,7 @@ internal sealed class DistributedCache
     /// </summary>
     public PeerNode? GetWorkerForGuild(string guildId, ConcurrentDictionary<string, PeerNode> peers)
     {
-        var shardId = GetShardIdForGuild(guildId);
+        int shardId = GetShardIdForGuild(guildId);
         return FindWorkerForShard(shardId, peers);
     }
 }

@@ -10,7 +10,7 @@ namespace SimpleDiscordNet.Sharding;
 /// </summary>
 internal sealed class SuccessionManager
 {
-    private readonly List<SuccessionEntry> _succession = new();
+    private readonly List<SuccessionEntry> _succession = [];
     private readonly object _lock = new();
     private readonly NativeLogger _logger;
 
@@ -32,7 +32,7 @@ internal sealed class SuccessionManager
 
             // Add at end with next position
             int position = _succession.Count + 1;
-            var entry = new SuccessionEntry(position, processId, url, isOriginalCoordinator);
+            SuccessionEntry entry = new(position, processId, url, isOriginalCoordinator);
             _succession.Add(entry);
 
             _logger.Log(LogLevel.Information, $"Succession updated: {processId} added at position {position}");

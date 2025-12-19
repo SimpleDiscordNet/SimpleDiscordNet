@@ -18,6 +18,10 @@ public sealed record InteractionCreateEvent
     public string? GuildId { get; init; }
     public string? ChannelId { get; init; }
     public Author? Author { get; init; }
+    // Present when interaction is in a guild
+    public Entities.DiscordMember? Member { get; init; }
+    // Guild object if available (resolved from cache)
+    public Entities.DiscordGuild? Guild { get; init; }
     // Present when Type == ApplicationCommand
     public ApplicationCommandData? Data { get; init; }
     // Present when Type == MessageComponent

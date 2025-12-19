@@ -94,6 +94,14 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTI
 
 ## Version History
 
+### v1.4.0 - Enhanced InteractionContext & Security (2025-12-19)
+- ✅ **Member and Guild objects in InteractionContext** - Direct access to member/guild without cache lookups
+- ✅ **HTTPS-only ShardCoordinator** - Secure TLS communication for distributed sharding (upgraded from HTTP)
+- ✅ **100% Zero Reflection** - All anonymous objects replaced with strongly-typed classes for full AoT compatibility
+- ✅ **Enhanced type safety** - MessagePayload, BulkDeleteMessagesRequest, BanMemberRequest, HttpErrorResponse
+- ✅ **Code quality improvements** - Removed redundant type specifications and method overload warnings
+- 🔒 **Security hardened** - TLS 1.3+ for shard coordination endpoints
+
 ### v1.3.0 - Sharding Support (2025-12-19)
 - ✅ Added 3-mode sharding system: single process, multi-shard, distributed
 - ✅ Distributed coordinator/worker architecture with auto-discovery

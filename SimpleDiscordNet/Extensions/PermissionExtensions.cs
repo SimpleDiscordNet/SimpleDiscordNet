@@ -8,7 +8,7 @@ namespace SimpleDiscordNet.Extensions;
 /// </summary>
 public static class PermissionExtensions
 {
-    extension(Role role)
+    extension(DiscordRole role)
     {
         /// <summary>
         /// Checks if a role has a specific permission.
@@ -16,8 +16,7 @@ public static class PermissionExtensions
         /// </summary>
         public bool HasPermission(PermissionFlags permission)
         {
-            if (role.Permissions is null) return false;
-            if (!ulong.TryParse(role.Permissions, out ulong perms)) return false;
+            ulong perms = role.Permissions;
             return (perms & (ulong)permission) != 0;
         }
 
@@ -50,14 +49,13 @@ public static class PermissionExtensions
             => role.HasPermission(PermissionFlags.BanMembers);
     }
 
-    extension(Member member)
+    extension(DiscordMember member)
     {
         /// <summary>
         /// Gets the permission bits for a member from their interaction permissions.
         /// Example: ulong perms = member.GetPermissions();
         /// </summary>
-        public ulong GetPermissions()
-            => member.GetPermissionBits();
+        public ulong GetPermissions() => member.Permissions ?? 0UL;
 
         /// <summary>
         /// Checks if a member has a specific permission (from interaction context).
@@ -65,7 +63,7 @@ public static class PermissionExtensions
         /// </summary>
         public bool HasPermission(PermissionFlags permission)
         {
-            ulong perms = member.GetPermissionBits();
+            ulong perms = member.Permissions ?? 0UL;
             return (perms & (ulong)permission) != 0;
         }
 
@@ -73,7 +71,6 @@ public static class PermissionExtensions
         /// Checks if a member is an administrator.
         /// Example: if (member.IsAdmin()) { ... }
         /// </summary>
-        public bool IsAdmin()
-            => member.HasPermission(PermissionFlags.Administrator);
+        public bool IsAdmin() => member.HasPermission(PermissionFlags.Administrator);
     }
 }

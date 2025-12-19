@@ -64,7 +64,7 @@ internal sealed class ShardManager : IDisposable
     /// </summary>
     public async Task StopShardAsync(int shardId)
     {
-        if (_shards.TryRemove(shardId, out var shard))
+        if (_shards.TryRemove(shardId, out Shard? shard))
         {
             try
             {
@@ -98,9 +98,9 @@ internal sealed class ShardManager : IDisposable
     /// </summary>
     public ShardInfo[] GetAllShardInfos()
     {
-        var result = new ShardInfo[_shards.Count];
+        ShardInfo[] result = new ShardInfo[_shards.Count];
         int i = 0;
-        foreach (var kvp in _shards)
+        foreach (KeyValuePair<int, Shard> kvp in _shards)
         {
             result[i++] = kvp.Value.ToInfo();
         }
@@ -130,7 +130,7 @@ internal sealed class ShardManager : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        foreach (var kvp in _shards)
+        foreach (KeyValuePair<int, Shard> kvp in _shards)
         {
             try
             {
@@ -148,7 +148,7 @@ internal sealed class ShardManager : IDisposable
     /// Wires gateway events from a shard to provided handlers.
     /// Example: manager.WireShardEvents(shard, OnMessageCreate, OnInteractionCreate, ...);
     /// </summary>
-    internal void WireShardEvents(
+    internal static void WireShardEvents(
         Shard shard,
         EventHandler? onConnected,
         EventHandler<Exception?>? onDisconnected,
@@ -156,25 +156,26 @@ internal sealed class ShardManager : IDisposable
         EventHandler<MessageCreateEvent>? onMessageCreate,
         EventHandler<InteractionCreateEvent>? onInteractionCreate,
         EventHandler<Events.GuildCreateEvent>? onGuildCreate,
-        EventHandler<Entities.Guild>? onGuildUpdate,
-        EventHandler<string>? onGuildDelete,
+        EventHandler<Entities.DiscordGuild>? onGuildUpdate,
+        EventHandler<ulong>? onGuildDelete,
         EventHandler<Events.GuildEmojisUpdateEvent>? onGuildEmojisUpdate,
-        EventHandler<Entities.Channel>? onChannelCreate,
-        EventHandler<Entities.Channel>? onChannelUpdate,
-        EventHandler<Entities.Channel>? onChannelDelete,
+        EventHandler<Entities.DiscordChannel>? onChannelCreate,
+        EventHandler<Entities.DiscordChannel>? onChannelUpdate,
+        EventHandler<Entities.DiscordChannel>? onChannelDelete,
         EventHandler<Events.GatewayRoleEvent>? onGuildRoleCreate,
         EventHandler<Events.GatewayRoleEvent>? onGuildRoleUpdate,
         EventHandler<Events.GatewayRoleEvent>? onGuildRoleDelete,
-        EventHandler<Entities.Channel>? onThreadCreate,
-        EventHandler<Entities.Channel>? onThreadUpdate,
-        EventHandler<Entities.Channel>? onThreadDelete,
+        EventHandler<Entities.DiscordChannel>? onThreadCreate,
+        EventHandler<Entities.DiscordChannel>? onThreadUpdate,
+        EventHandler<Entities.DiscordChannel>? onThreadDelete,
         EventHandler<Events.GatewayMemberEvent>? onGuildMemberAdd,
         EventHandler<Events.GatewayMemberEvent>? onGuildMemberUpdate,
         EventHandler<Events.GatewayMemberEvent>? onGuildMemberRemove,
         EventHandler<Events.GuildMembersChunkEvent>? onGuildMembersChunk,
         EventHandler<Events.GatewayUserEvent>? onGuildBanAdd,
         EventHandler<Events.GatewayUserEvent>? onGuildBanRemove,
-        EventHandler<Entities.User>? onUserUpdate,
+        EventHandler<Entities.DiscordUser>? onUserUpdate,
+        EventHandler<Events.GatewayAuditLogEvent>? onGuildAuditLogEntryCreate,
         EventHandler<Events.MessageUpdateEvent>? onMessageUpdate,
         EventHandler<Events.MessageEvent>? onMessageDelete,
         EventHandler<Events.MessageEvent>? onMessageDeleteBulk,
@@ -209,6 +210,7 @@ internal sealed class ShardManager : IDisposable
         if (onGuildBanAdd != null) gateway.GuildBanAdd += onGuildBanAdd;
         if (onGuildBanRemove != null) gateway.GuildBanRemove += onGuildBanRemove;
         if (onUserUpdate != null) gateway.UserUpdate += onUserUpdate;
+        if (onGuildAuditLogEntryCreate != null) gateway.GuildAuditLogEntryCreate += onGuildAuditLogEntryCreate;
         if (onMessageUpdate != null) gateway.MessageUpdate += onMessageUpdate;
         if (onMessageDelete != null) gateway.MessageDelete += onMessageDelete;
         if (onMessageDeleteBulk != null) gateway.MessageDeleteBulk += onMessageDeleteBulk;

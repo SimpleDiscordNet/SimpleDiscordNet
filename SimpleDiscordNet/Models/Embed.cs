@@ -28,11 +28,15 @@ public sealed class EmbedFooter
 public sealed class EmbedImage
 {
     public string? url { get; set; }
+    public int? width { get; set; }
+    public int? height { get; set; }
 }
 
 public sealed class EmbedThumbnail
 {
     public string? url { get; set; }
+    public int? width { get; set; }
+    public int? height { get; set; }
 }
 
 public sealed class EmbedAuthor

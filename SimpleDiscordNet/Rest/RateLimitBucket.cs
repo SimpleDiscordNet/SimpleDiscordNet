@@ -161,7 +161,7 @@ internal sealed class RateLimitBucket
 
             // Parse retry-after (can be seconds or milliseconds)
             TimeSpan retryAfter = TimeSpan.FromSeconds(1);
-            if (response.Headers.TryGetValues("Retry-After", out var retryValues))
+            if (response.Headers.TryGetValues("Retry-After", out IEnumerable<string>? retryValues))
             {
                 using var enumerator = retryValues.GetEnumerator();
                 if (enumerator.MoveNext() && double.TryParse(enumerator.Current.AsSpan(), out double retrySeconds))
@@ -172,9 +172,9 @@ internal sealed class RateLimitBucket
 
             // Check if this is a global rate limit
             bool isGlobal = false;
-            if (response.Headers.TryGetValues("X-RateLimit-Global", out var globalValues))
+            if (response.Headers.TryGetValues("X-RateLimit-Global", out IEnumerable<string>? globalValues))
             {
-                using var enumerator = globalValues.GetEnumerator();
+                using IEnumerator<string> enumerator = globalValues.GetEnumerator();
                 if (enumerator.MoveNext())
                 {
                     isGlobal = enumerator.Current.AsSpan().Equals("true", StringComparison.Ordinal);

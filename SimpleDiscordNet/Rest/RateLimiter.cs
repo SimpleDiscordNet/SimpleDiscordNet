@@ -80,7 +80,7 @@ internal sealed class RateLimiter : IDisposable
     public async Task Handle429Async(string route, HttpResponseMessage response, CancellationToken ct)
     {
         string bucketKey = GetBucketKey(route);
-        if (response.Headers.TryGetValues("X-RateLimit-Bucket", out var bucketValues))
+        if (response.Headers.TryGetValues("X-RateLimit-Bucket", out IEnumerable<string>? bucketValues))
         {
             string? bucketId = bucketValues.FirstOrDefault();
             if (bucketId != null)

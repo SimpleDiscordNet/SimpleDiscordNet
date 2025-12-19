@@ -5,6 +5,7 @@ using SimpleDiscordNet.Models;
 using SimpleDiscordNet.Models.Context;
 using SimpleDiscordNet.Models.Requests;
 using SimpleDiscordNet.Primitives;
+using SimpleDiscordNet.Sharding;
 using SimpleDiscordNet.Sharding.Models;
 
 namespace SimpleDiscordNet.Serialization;
@@ -13,24 +14,27 @@ namespace SimpleDiscordNet.Serialization;
                              PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower,
                              WriteIndented = false)]
 [JsonSerializable(typeof(ApplicationInfo))]
-[JsonSerializable(typeof(Guild))]
-[JsonSerializable(typeof(Guild[]))]
-[JsonSerializable(typeof(Channel))]
-[JsonSerializable(typeof(Channel[]))]
-[JsonSerializable(typeof(Role))]
-[JsonSerializable(typeof(Role[]))]
-[JsonSerializable(typeof(Member))]
-[JsonSerializable(typeof(Member[]))]
-[JsonSerializable(typeof(User))]
-[JsonSerializable(typeof(User[]))]
-[JsonSerializable(typeof(Emoji))]
-[JsonSerializable(typeof(Emoji[]))]
-[JsonSerializable(typeof(Message))]
+[JsonSerializable(typeof(DiscordGuild))]
+[JsonSerializable(typeof(DiscordGuild[]))]
+[JsonSerializable(typeof(DiscordChannel))]
+[JsonSerializable(typeof(DiscordChannel[]))]
+[JsonSerializable(typeof(DiscordRole))]
+[JsonSerializable(typeof(DiscordRole[]))]
+[JsonSerializable(typeof(DiscordMember))]
+[JsonSerializable(typeof(DiscordMember[]))]
+[JsonSerializable(typeof(DiscordUser))]
+[JsonSerializable(typeof(DiscordUser[]))]
+[JsonSerializable(typeof(DiscordEmoji))]
+[JsonSerializable(typeof(DiscordEmoji[]))]
+[JsonSerializable(typeof(DiscordMessage))]
 [JsonSerializable(typeof(Embed))]
 [JsonSerializable(typeof(CreateMessageRequest))]
 [JsonSerializable(typeof(WebhookMessageRequest))]
 [JsonSerializable(typeof(OpenModalRequest))]
+[JsonSerializable(typeof(BulkDeleteMessagesRequest))]
+[JsonSerializable(typeof(BanMemberRequest))]
 [JsonSerializable(typeof(ModalData))]
+[JsonSerializable(typeof(MessagePayload))]
 [JsonSerializable(typeof(ApplicationCommandDefinition))]
 [JsonSerializable(typeof(ApplicationCommandDefinition[]))]
 [JsonSerializable(typeof(CommandChoice))]
@@ -77,6 +81,7 @@ namespace SimpleDiscordNet.Serialization;
 [JsonSerializable(typeof(CoordinatorResumptionRequest))]
 [JsonSerializable(typeof(CoordinatorHandoffData))]
 [JsonSerializable(typeof(CoordinatorResumedAnnouncement))]
+[JsonSerializable(typeof(HttpErrorResponse))]
 // Sharding model arrays/lists
 [JsonSerializable(typeof(List<SuccessionEntry>))]
 [JsonSerializable(typeof(List<int>))]

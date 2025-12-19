@@ -59,10 +59,19 @@ public static class DiscordEvents
     public static event EventHandler<MemberEvent>? MemberUpdated;
     public static event EventHandler<MemberEvent>? MemberLeft; // includes kicks/leaves
 
+    public static event EventHandler<GuildMembersChunkEvent>? GuildMembersChunk;
+
     public static event EventHandler<BanEvent>? BanAdded;
     public static event EventHandler<BanEvent>? BanRemoved;
 
     public static event EventHandler<BotUserEvent>? BotUserUpdated; // Only the bot user per Discord API
+
+    // Audit logs
+    /// <summary>
+    /// Fired when a new audit log entry is created in a guild.
+    /// Requires GUILD_MODERATION intent.
+    /// </summary>
+    public static event EventHandler<AuditLogEvent>? AuditLogEntryCreated;
 
     // Direct messages
     public static event EventHandler<DirectMessageEvent>? DirectMessageReceived;
@@ -97,10 +106,14 @@ public static class DiscordEvents
     internal static void RaiseMemberUpdated(object? sender, MemberEvent e) => MemberUpdated?.Invoke(sender, e);
     internal static void RaiseMemberLeft(object? sender, MemberEvent e) => MemberLeft?.Invoke(sender, e);
 
+    internal static void RaiseGuildMembersChunk(object? sender, GuildMembersChunkEvent e) => GuildMembersChunk?.Invoke(sender, e);
+
     internal static void RaiseBanAdded(object? sender, BanEvent e) => BanAdded?.Invoke(sender, e);
     internal static void RaiseBanRemoved(object? sender, BanEvent e) => BanRemoved?.Invoke(sender, e);
 
     internal static void RaiseBotUserUpdated(object? sender, BotUserEvent e) => BotUserUpdated?.Invoke(sender, e);
+
+    internal static void RaiseAuditLogEntryCreated(object? sender, AuditLogEvent e) => AuditLogEntryCreated?.Invoke(sender, e);
 
     internal static void RaiseDirectMessageReceived(object? sender, DirectMessageEvent e) => DirectMessageReceived?.Invoke(sender, e);
 }

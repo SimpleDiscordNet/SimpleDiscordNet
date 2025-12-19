@@ -17,8 +17,8 @@ internal sealed partial class GatewayClient
                 shard = ShardId.HasValue && TotalShards.HasValue ? [ShardId.Value, TotalShards.Value] : null
             }
         };
-        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        System.Buffers.ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
         {
             JsonSerializer.Serialize(writer, identify, json);
         }
@@ -41,8 +41,8 @@ internal sealed partial class GatewayClient
                 seq = _seq
             }
         };
-        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        System.Buffers.ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
         {
             JsonSerializer.Serialize(writer, resume, json);
         }
@@ -66,8 +66,8 @@ internal sealed partial class GatewayClient
                 limit = 0 // 0 = no limit
             }
         };
-        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-        using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+        System.Buffers.ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
         {
             JsonSerializer.Serialize(writer, request, json);
         }

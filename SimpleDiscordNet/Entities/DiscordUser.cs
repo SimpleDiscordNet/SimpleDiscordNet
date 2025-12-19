@@ -1,12 +1,12 @@
 namespace SimpleDiscordNet.Entities;
 
-public sealed record User
+public sealed record DiscordUser
 {
-    public required string Id { get; init; }
+    public required ulong Id { get; init; }
     public required string Username { get; init; }
 
-    /// <summary>User's 4-digit discriminator (deprecated by Discord, may be "0" for new usernames)</summary>
-    public string? Discriminator { get; init; }
+    /// <summary>User's 4-digit discriminator (deprecated by Discord, may be 0 for new usernames)</summary>
+    public ushort Discriminator { get; init; }
 
     /// <summary>User's display name (new username system)</summary>
     public string? Global_Name { get; init; }
@@ -36,8 +36,7 @@ public sealed record User
     /// <param name="format">Image format (png, jpg, webp, gif). Defaults to png, use gif for animated avatars.</param>
     public string? GetAvatarUrl(int size = 256, string format = "png")
     {
-        if (string.IsNullOrEmpty(Avatar)) return null;
-        return $"https://cdn.discordapp.com/avatars/{Id}/{Avatar}.{format}?size={size}";
+        return string.IsNullOrEmpty(Avatar) ? null : $"https://cdn.discordapp.com/avatars/{Id}/{Avatar}.{format}?size={size}";
     }
 
     /// <summary>
@@ -47,9 +46,9 @@ public sealed record User
     {
         // New system: uses (user_id >> 22) % 6
         // Old system: uses discriminator % 5
-        int index = string.IsNullOrEmpty(Discriminator) || Discriminator == "0"
-            ? (int)((ulong.Parse(Id) >> 22) % 6)
-            : int.Parse(Discriminator) % 5;
+        int index = Discriminator == 0
+            ? (int)((Id >> 22) % 6)
+            : Discriminator % 5;
         return $"https://cdn.discordapp.com/embed/avatars/{index}.png";
     }
 
@@ -61,7 +60,7 @@ public sealed record User
     /// <summary>
     /// Gets the full username with discriminator if available (e.g., "Username#1234" or just "Username").
     /// </summary>
-    public string FullUsername => string.IsNullOrEmpty(Discriminator) || Discriminator == "0"
+    public string FullUsername => Discriminator == 0
         ? Username
-        : $"{Username}#{Discriminator}";
+        : $"{Username}#{Discriminator:D4}"; // Format as 4 digits with leading zeros
 }

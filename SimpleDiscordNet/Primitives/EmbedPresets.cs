@@ -28,7 +28,7 @@ public static class EmbedPresets
     /// </summary>
     public static EmbedBuilder Error(string message, string? title = null)
     {
-        var builder = new EmbedBuilder()
+        EmbedBuilder builder = new EmbedBuilder()
             .WithDescription(message)
             .WithColor(DiscordColor.Red);
 

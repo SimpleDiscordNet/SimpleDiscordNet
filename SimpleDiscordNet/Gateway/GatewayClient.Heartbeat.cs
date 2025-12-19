@@ -1,4 +1,5 @@
-﻿using System.Net.WebSockets;
+﻿using System.Buffers;
+using System.Net.WebSockets;
 using System.Text.Json;
 
 namespace SimpleDiscordNet.Gateway;
@@ -27,8 +28,8 @@ internal sealed partial class GatewayClient
                 }
             }
             Heartbeat hb = new() { d = _seq };
-            var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-            using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+            ArrayBufferWriter<byte> buffer = new();
+            using (Utf8JsonWriter writer = new(buffer))
             {
                 JsonSerializer.Serialize(writer, hb, json);
             }

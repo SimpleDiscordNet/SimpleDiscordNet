@@ -33,13 +33,13 @@ internal sealed class LoadBalancer
     {
         try
         {
-            var workers = _peers.Values.Where(p => p.IsHealthy).ToArray();
+            PeerNode[] workers = _peers.Values.Where(p => p.IsHealthy).ToArray();
             if (workers.Length < 2) return; // Need at least 2 workers to balance
 
             // Find overloaded workers
-            var overloaded = workers.Where(w =>
+            PeerNode[] overloaded = workers.Where(w =>
             {
-                var metrics = w.LatestMetrics;
+                WorkerMetrics? metrics = w.LatestMetrics;
                 if (metrics == null) return false;
 
                 bool highCpu = metrics.CpuUsage > HighCpuThreshold;
@@ -51,11 +51,11 @@ internal sealed class LoadBalancer
             if (overloaded.Length == 0) return;
 
             // Find healthy targets with capacity
-            var targets = workers
+            PeerNode[] targets = workers
                 .Where(w => !overloaded.Contains(w))
                 .Where(w =>
                 {
-                    var metrics = w.LatestMetrics;
+                    WorkerMetrics? metrics = w.LatestMetrics;
                     if (metrics == null) return false;
                     return metrics.CpuUsage < 0.60 && w.AssignedShards.Count < GetMaxShardsPerWorker(workers.Length);
                 })
@@ -70,17 +70,17 @@ internal sealed class LoadBalancer
 
             // Migrate one shard from each overloaded worker
             int targetIndex = 0;
-            foreach (var overloadedWorker in overloaded)
+            foreach (PeerNode overloadedWorker in overloaded)
             {
                 if (overloadedWorker.AssignedShards.Count == 0) continue;
 
                 // Find the shard with highest latency/load
-                var metrics = overloadedWorker.LatestMetrics;
+                WorkerMetrics? metrics = overloadedWorker.LatestMetrics;
                 int shardToMigrate;
 
-                if (metrics?.Shards != null && metrics.Shards.Count > 0)
+                if (metrics?.Shards is { Count: > 0 })
                 {
-                    var worstShard = metrics.Shards.OrderByDescending(s => s.GatewayLatency).First();
+                    ShardMetrics worstShard = metrics.Shards.OrderByDescending(s => s.GatewayLatency).First();
                     shardToMigrate = worstShard.Id;
                 }
                 else
@@ -89,15 +89,15 @@ internal sealed class LoadBalancer
                     shardToMigrate = overloadedWorker.AssignedShards[0];
                 }
 
-                var target = targets[targetIndex % targets.Length];
+                PeerNode target = targets[targetIndex % targets.Length];
                 targetIndex++;
 
-                var overloadedState = overloadedWorker.ToState();
-                var targetState = target.ToState();
+                PeerNodeState overloadedState = overloadedWorker.ToState();
+                PeerNodeState targetState = target.ToState();
 
                 _logger.Log(LogLevel.Information, $"LoadBalancer: Migrating shard {shardToMigrate} from {overloadedState.ProcessId} (CPU: {metrics?.CpuUsage:P0}) to {targetState.ProcessId} (CPU: {target.LatestMetrics?.CpuUsage:P0})");
 
-                var migrationRequest = new ShardMigrationRequest(
+                ShardMigrationRequest migrationRequest = new ShardMigrationRequest(
                     ShardId: shardToMigrate,
                     FromNode: overloadedState.ProcessId,
                     ToNode: targetState.ProcessId,
@@ -133,17 +133,17 @@ internal sealed class LoadBalancer
     /// </summary>
     public string GetLoadSummary()
     {
-        var workers = _peers.Values.Where(p => p.IsHealthy).ToArray();
+        PeerNode[] workers = _peers.Values.Where(p => p.IsHealthy).ToArray();
         if (workers.Length == 0) return "No healthy workers";
 
-        var lines = new List<string> { "Load Distribution:" };
-        foreach (var worker in workers.OrderBy(w => w.ProcessId))
+        List<string> lines = ["Load Distribution:"];
+        foreach (PeerNode worker in workers.OrderBy(w => w.ProcessId))
         {
-            var state = worker.ToState();
-            var metrics = worker.LatestMetrics;
-            var cpu = metrics?.CpuUsage ?? 0;
-            var shardCount = worker.AssignedShards.Count;
-            var avgLatency = metrics?.Shards?.Average(s => s.GatewayLatency) ?? 0;
+            PeerNodeState state = worker.ToState();
+            WorkerMetrics? metrics = worker.LatestMetrics;
+            double cpu = metrics?.CpuUsage ?? 0;
+            int shardCount = worker.AssignedShards.Count;
+            double avgLatency = metrics?.Shards?.Average(s => s.GatewayLatency) ?? 0;
 
             lines.Add($"  {state.ProcessId}: {shardCount} shards, CPU: {cpu:P0}, Avg Latency: {avgLatency:F0}ms");
         }

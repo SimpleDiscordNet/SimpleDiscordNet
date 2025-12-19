@@ -2,6 +2,7 @@
 using System.Text.Json;
 using SimpleDiscordNet.Logging;
 using SimpleDiscordNet.Models;
+using SimpleDiscordNet.Models.Requests;
 
 namespace SimpleDiscordNet.Rest;
 
@@ -56,8 +57,8 @@ internal sealed class RestClient : IDisposable
             using HttpRequestMessage req = new(method, BaseUrl + route);
             if (payload != null)
             {
-                var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-                using (var writer = new System.Text.Json.Utf8JsonWriter(buffer))
+                System.Buffers.ArrayBufferWriter<byte> buffer = new();
+                using (Utf8JsonWriter writer = new(buffer))
                 {
                     JsonSerializer.Serialize(writer, payload, _json);
                 }
@@ -87,9 +88,9 @@ internal sealed class RestClient : IDisposable
 
                 // Parse retry-after
                 TimeSpan retryAfter = TimeSpan.FromSeconds(1);
-                if (res.Headers.TryGetValues("Retry-After", out var retryValues))
+                if (res.Headers.TryGetValues("Retry-After", out IEnumerable<string>? retryValues))
                 {
-                    using var enumerator = retryValues.GetEnumerator();
+                    using IEnumerator<string> enumerator = retryValues.GetEnumerator();
                     if (enumerator.MoveNext() && double.TryParse(enumerator.Current.AsSpan(), out double retrySeconds))
                     {
                         retryAfter = TimeSpan.FromSeconds(retrySeconds);
@@ -193,12 +194,12 @@ internal sealed class RestClient : IDisposable
         using RateLimitHandle handle = await _rateLimiter.AcquireAsync(route, ct).ConfigureAwait(false);
 
         using MultipartFormDataContent content = new();
-        var jsonBuffer = new System.Buffers.ArrayBufferWriter<byte>();
-        using (var writer = new System.Text.Json.Utf8JsonWriter(jsonBuffer))
+        System.Buffers.ArrayBufferWriter<byte> jsonBuffer = new();
+        using (Utf8JsonWriter writer = new(jsonBuffer))
         {
             JsonSerializer.Serialize(writer, payload, _json);
         }
-        var jsonContent = new ReadOnlyMemoryContent(jsonBuffer.WrittenMemory);
+        ReadOnlyMemoryContent jsonContent = new(jsonBuffer.WrittenMemory);
         jsonContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
         content.Add(jsonContent, "payload_json");
 
@@ -408,7 +409,7 @@ internal sealed class RestClient : IDisposable
     /// </summary>
     public async Task BulkDeleteMessagesAsync(string channelId, string[] messageIds, CancellationToken ct)
     {
-        var payload = new { messages = messageIds };
+        BulkDeleteMessagesRequest payload = new() { messages = messageIds };
         using HttpResponseMessage res = await SendAsync(HttpMethod.Post, $"/channels/{channelId}/messages/bulk-delete", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
@@ -553,7 +554,7 @@ internal sealed class RestClient : IDisposable
     /// </summary>
     public async Task BanMemberAsync(string guildId, string userId, int? deleteMessageDays, CancellationToken ct)
     {
-        var payload = new { delete_message_days = deleteMessageDays };
+        BanMemberRequest payload = new() { delete_message_days = deleteMessageDays };
         using HttpResponseMessage res = await SendAsync(HttpMethod.Put, $"/guilds/{guildId}/bans/{userId}", payload, ct).ConfigureAwait(false);
         if (!res.IsSuccessStatusCode)
         {
@@ -684,14 +685,12 @@ internal sealed class RestClient : IDisposable
     /// <summary>
     /// Get current rate limit statistics for all buckets.
     /// </summary>
-    public IReadOnlyList<RateLimitBucketInfo> GetRateLimitStats()
-        => _rateLimiter.GetAllBucketInfo();
+    public IReadOnlyList<RateLimitBucketInfo> GetRateLimitStats() => _rateLimiter.GetAllBucketInfo();
 
     /// <summary>
     /// Get rate limit statistics for a specific bucket.
     /// </summary>
-    public RateLimitBucketInfo? GetBucketStats(string bucketId)
-        => _rateLimiter.GetBucketInfo(bucketId);
+    public RateLimitBucketInfo? GetBucketStats(string bucketId) => _rateLimiter.GetBucketInfo(bucketId);
 
     public void Dispose()
     {

@@ -3,7 +3,7 @@ namespace SimpleDiscordNet.Entities;
 /// <summary>
 /// Represents a Discord emoji (custom or standard Unicode emoji).
 /// </summary>
-public sealed record Emoji
+public sealed record DiscordEmoji
 {
     /// <summary>Emoji ID (null for standard Unicode emoji)</summary>
     public string? Id { get; init; }
@@ -15,7 +15,7 @@ public sealed record Emoji
     public string[]? Roles { get; init; }
 
     /// <summary>User that created this emoji</summary>
-    public User? User { get; init; }
+    public DiscordUser? User { get; init; }
 
     /// <summary>Whether this emoji must be wrapped in colons</summary>
     public bool? Require_Colons { get; init; }
@@ -51,12 +51,12 @@ public sealed record Emoji
     /// Creates an Emoji from a Unicode character.
     /// Example: Emoji.Unicode("👍")
     /// </summary>
-    public static Emoji Unicode(string unicodeCharacter) => new() { Name = unicodeCharacter };
+    public static DiscordEmoji Unicode(string unicodeCharacter) => new() { Name = unicodeCharacter };
 
     /// <summary>
     /// Creates an Emoji from a custom emoji ID and name.
     /// Example: Emoji.Custom("custom_emoji", "123456789")
     /// </summary>
-    public static Emoji Custom(string name, string id, bool animated = false)
+    public static DiscordEmoji Custom(string name, string id, bool animated = false)
         => new() { Id = id, Name = name, Animated = animated };
 }

@@ -198,7 +198,7 @@ public async Task GreetAsync(
 
 ### InteractionContext
 
-Context for command execution.
+Context for command execution with direct access to entities.
 
 **Namespace:** `SimpleDiscordNet.Commands`
 
@@ -206,12 +206,14 @@ Context for command execution.
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Bot` | `IDiscordBot` | Bot instance |
-| `Interaction` | `Interaction` | Raw interaction data |
-| `Guild` | `Guild` | Current guild (null in DMs) |
-| `Channel` | `Channel` | Current channel |
-| `User` | `User` | User who invoked command |
-| `Member` | `Member` | Member object (null in DMs) |
+| `InteractionId` | `string` | Unique interaction identifier |
+| `InteractionToken` | `string` | Token for followup messages |
+| `ApplicationId` | `string` | Bot's application ID |
+| `GuildId` | `string?` | Guild ID (null in DMs) |
+| `ChannelId` | `string?` | Channel ID where interaction occurred |
+| `Member` | `DiscordMember?` | **🆕 v1.4.0:** Member object (null in DMs) - direct access without cache lookup |
+| `Guild` | `DiscordGuild?` | **🆕 v1.4.0:** Guild object (null in DMs) - direct access without cache lookup |
+| `Channel` | `DiscordChannel?` | Current channel (from cache) |
 
 #### Methods
 

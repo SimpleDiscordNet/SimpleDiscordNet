@@ -7,6 +7,6 @@ namespace SimpleDiscordNet.Events;
 /// </summary>
 internal sealed record GuildEmojisUpdateEvent
 {
-    public required string GuildId { get; init; }
-    public required Emoji[] Emojis { get; init; }
+    public required ulong GuildId { get; init; }
+    public required DiscordEmoji[] Emojis { get; init; }
 }

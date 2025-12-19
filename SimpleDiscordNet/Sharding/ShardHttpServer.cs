@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Text;
@@ -7,9 +8,11 @@ using SimpleDiscordNet.Logging;
 namespace SimpleDiscordNet.Sharding;
 
 /// <summary>
-/// HttpListener-based HTTP server for shard coordination endpoints.
+/// HttpListener-based HTTPS server for shard coordination endpoints.
 /// Handles registration, health checks, metrics, and coordinator protocols.
-/// Example: var server = new ShardHttpServer("http://+:8080/"); server.Start();
+/// IMPORTANT: For HTTPS support, SSL certificates must be configured using netsh http add sslcert
+/// or by placing this service behind a TLS-terminating reverse proxy (nginx, Caddy, etc.).
+/// Example: var server = new ShardHttpServer("https://+:8443/"); server.Start();
 /// </summary>
 [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access otherwise can break functionality when trimming application code", Justification = "ShardHttpServer uses JsonSerializerOptions configured with source-generated DiscordJsonContext for all sharding models.")]
 [UnconditionalSuppressMessage("AOT", "IL3050:Calling members annotated with 'RequiresDynamicCodeAttribute' may break functionality when AOT compiling.", Justification = "ShardHttpServer uses JsonSerializerOptions configured with source-generated DiscordJsonContext for all sharding models.")]
@@ -109,7 +112,7 @@ internal sealed class ShardHttpServer : IDisposable
     /// </summary>
     public void Start()
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(ShardHttpServer));
+        ObjectDisposedException.ThrowIf(_disposed, this);
         _listener.Start();
         _listenerTask = Task.Run(ListenLoop, _cts.Token);
         // Server started (no logging needed at this level)
@@ -121,7 +124,7 @@ internal sealed class ShardHttpServer : IDisposable
         {
             try
             {
-                var context = await _listener.GetContextAsync().ConfigureAwait(false);
+                HttpListenerContext context = await _listener.GetContextAsync().ConfigureAwait(false);
                 _ = Task.Run(() => HandleRequestAsync(context), _cts.Token);
             }
             catch (HttpListenerException) when (_cts.Token.IsCancellationRequested)
@@ -139,8 +142,8 @@ internal sealed class ShardHttpServer : IDisposable
     {
         try
         {
-            var path = context.Request.Url?.AbsolutePath ?? string.Empty;
-            var method = context.Request.HttpMethod;
+            string path = context.Request.Url?.AbsolutePath ?? string.Empty;
+            string method = context.Request.HttpMethod;
 
             Func<HttpListenerContext, Task>? handler = (method, path) switch
             {
@@ -163,7 +166,7 @@ internal sealed class ShardHttpServer : IDisposable
             }
             else
             {
-                await RespondAsync(context, 404, new { error = "Not Found" }).ConfigureAwait(false);
+                await RespondAsync(context, 404, new HttpErrorResponse { error = "Not Found" }).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -171,7 +174,7 @@ internal sealed class ShardHttpServer : IDisposable
             // Swallow request errors
             try
             {
-                await RespondAsync(context, 500, new { error = ex.Message }).ConfigureAwait(false);
+                await RespondAsync(context, 500, new HttpErrorResponse { error = ex.Message }).ConfigureAwait(false);
             }
             catch { /* Best effort */ }
         }
@@ -197,8 +200,8 @@ internal sealed class ShardHttpServer : IDisposable
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json";
 
-        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer))
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
         {
             JsonSerializer.Serialize(writer, data, _json);
         }
@@ -212,7 +215,7 @@ internal sealed class ShardHttpServer : IDisposable
     /// Sends empty response with specified status code.
     /// Example: await RespondAsync(context, 204);
     /// </summary>
-    public Task RespondAsync(HttpListenerContext context, int statusCode)
+    public static Task RespondAsync(HttpListenerContext context, int statusCode)
     {
         context.Response.StatusCode = statusCode;
         context.Response.Close();

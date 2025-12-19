@@ -38,21 +38,21 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
 
     // Domain events (internal) to be surfaced by DiscordBot
     public event EventHandler<GuildCreateEvent>? GuildCreate;
-    public event EventHandler<Guild>? GuildUpdate;
-    public event EventHandler<string>? GuildDelete; // guild id
+    public event EventHandler<DiscordGuild>? GuildUpdate;
+    public event EventHandler<ulong>? GuildDelete; // guild id
     public event EventHandler<GuildEmojisUpdateEvent>? GuildEmojisUpdate;
 
-    public event EventHandler<Channel>? ChannelCreate;
-    public event EventHandler<Channel>? ChannelUpdate;
-    public event EventHandler<Channel>? ChannelDelete;
+    public event EventHandler<DiscordChannel>? ChannelCreate;
+    public event EventHandler<DiscordChannel>? ChannelUpdate;
+    public event EventHandler<DiscordChannel>? ChannelDelete;
 
     public event EventHandler<GatewayRoleEvent>? GuildRoleCreate;
     public event EventHandler<GatewayRoleEvent>? GuildRoleUpdate;
     public event EventHandler<GatewayRoleEvent>? GuildRoleDelete;
 
-    public event EventHandler<Channel>? ThreadCreate;
-    public event EventHandler<Channel>? ThreadUpdate;
-    public event EventHandler<Channel>? ThreadDelete;
+    public event EventHandler<DiscordChannel>? ThreadCreate;
+    public event EventHandler<DiscordChannel>? ThreadUpdate;
+    public event EventHandler<DiscordChannel>? ThreadDelete;
 
     public event EventHandler<GatewayMemberEvent>? GuildMemberAdd;
     public event EventHandler<GatewayMemberEvent>? GuildMemberUpdate;
@@ -62,7 +62,9 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
     public event EventHandler<GatewayUserEvent>? GuildBanAdd;
     public event EventHandler<GatewayUserEvent>? GuildBanRemove;
 
-    public event EventHandler<User>? UserUpdate; // Bot user
+    public event EventHandler<DiscordUser>? UserUpdate; // Bot user
+
+    public event EventHandler<GatewayAuditLogEvent>? GuildAuditLogEntryCreate;
 
     public event EventHandler<MessageUpdateEvent>? MessageUpdate;
     public event EventHandler<MessageEvent>? MessageDelete;
@@ -148,22 +150,22 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
         {
             try
             {
-                string guildId = data.GetProperty("id").GetString()!;
+                ulong guildId = data.GetProperty("id").GetUInt64();
 
                 // Parse roles
-                Role[]? roles = null;
+                DiscordRole[]? roles = null;
                 if (data.TryGetProperty("roles", out JsonElement rolesEl) && rolesEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Role> roleList = new();
+                    List<DiscordRole> roleList = new();
                     foreach (JsonElement roleData in rolesEl.EnumerateArray())
                     {
-                        Role role = new()
+                        DiscordRole role = new()
                         {
-                            Id = roleData.GetProperty("id").GetString()!,
+                            Id = roleData.GetProperty("id").GetUInt64(),
                             Name = roleData.GetProperty("name").GetString() ?? string.Empty,
                             Color = roleData.TryGetProperty("color", out JsonElement c) ? c.GetInt32() : 0,
                             Position = roleData.TryGetProperty("position", out JsonElement p) ? p.GetInt32() : 0,
-                            Permissions = roleData.TryGetProperty("permissions", out JsonElement perms) ? perms.GetString() : null
+                            Permissions = roleData.TryGetProperty("permissions", out JsonElement perms) ? perms.GetUInt64() : 0UL
                         };
                         roleList.Add(role);
                     }
@@ -171,13 +173,13 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                 }
 
                 // Parse emojis
-                Emoji[]? emojis = null;
+                DiscordEmoji[]? emojis = null;
                 if (data.TryGetProperty("emojis", out JsonElement emojisEl) && emojisEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Emoji> emojiList = new();
+                    List<DiscordEmoji> emojiList = new();
                     foreach (JsonElement emojiData in emojisEl.EnumerateArray())
                     {
-                        Emoji emoji = new()
+                        DiscordEmoji emoji = new()
                         {
                             Id = emojiData.TryGetProperty("id", out JsonElement eid) ? eid.GetString() : null,
                             Name = emojiData.TryGetProperty("name", out JsonElement en) ? en.GetString() : null,
@@ -188,7 +190,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                     emojis = emojiList.ToArray();
                 }
 
-                Guild g = new()
+                DiscordGuild g = new()
                 {
                     Id = guildId,
                     Name = data.GetProperty("name").GetString() ?? string.Empty,
@@ -197,18 +199,18 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                 };
 
                 // Parse channels
-                Channel[]? channels = null;
+                DiscordChannel[]? channels = null;
                 if (data.TryGetProperty("channels", out JsonElement channelsEl) && channelsEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Channel> channelList = new();
+                    List<DiscordChannel> channelList = new();
                     foreach (JsonElement channelData in channelsEl.EnumerateArray())
                     {
-                        Channel channel = new()
+                        DiscordChannel channel = new()
                         {
-                            Id = channelData.GetProperty("id").GetString()!,
+                            Id = channelData.GetProperty("id").GetUInt64(),
                             Name = channelData.TryGetProperty("name", out JsonElement n) ? (n.GetString() ?? string.Empty) : string.Empty,
                             Type = channelData.TryGetProperty("type", out JsonElement t) ? t.GetInt32() : 0,
-                            Parent_Id = channelData.TryGetProperty("parent_id", out JsonElement pid) && pid.ValueKind != JsonValueKind.Null ? pid.GetString() : null,
+                            Parent_Id = channelData.TryGetProperty("parent_id", out JsonElement pid) && pid.ValueKind != JsonValueKind.Null ? pid.GetUInt64() : null,
                             Guild_Id = guildId
                         };
                         channelList.Add(channel);
@@ -217,21 +219,21 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                 }
 
                 // Parse members
-                Member[]? members = null;
+                DiscordMember[]? members = null;
                 if (data.TryGetProperty("members", out JsonElement membersEl) && membersEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Member> memberList = new();
+                    List<DiscordMember> memberList = [];
                     foreach (JsonElement memberData in membersEl.EnumerateArray())
                     {
                         if (memberData.TryGetProperty("user", out JsonElement userData))
                         {
-                            User user = ParseUser(userData);
-                            string[] memberRoles = memberData.TryGetProperty("roles", out JsonElement rolesArr) && rolesArr.ValueKind == JsonValueKind.Array
-                                ? rolesArr.EnumerateArray().Select(static x => x.GetString()!).ToArray()
+                            DiscordUser user = ParseUser(userData);
+                            ulong[] memberRoles = memberData.TryGetProperty("roles", out JsonElement rolesArr) && rolesArr.ValueKind == JsonValueKind.Array
+                                ? rolesArr.EnumerateArray().Select(static x => x.GetUInt64()).ToArray()
                                 : [];
                             string? nick = memberData.TryGetProperty("nick", out JsonElement nickEl) && nickEl.ValueKind != JsonValueKind.Null ? nickEl.GetString() : null;
 
-                            Member member = new() { User = user, Nick = nick, Roles = memberRoles };
+                            DiscordMember member = new() { User = user, Nick = nick, Roles = memberRoles };
                             memberList.Add(member);
                         }
                     }
@@ -239,18 +241,18 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                 }
 
                 // Parse threads
-                Channel[]? threads = null;
+                DiscordChannel[]? threads = null;
                 if (data.TryGetProperty("threads", out JsonElement threadsEl) && threadsEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Channel> threadList = new();
+                    List<DiscordChannel> threadList = [];
                     foreach (JsonElement threadData in threadsEl.EnumerateArray())
                     {
-                        Channel thread = new()
+                        DiscordChannel thread = new()
                         {
-                            Id = threadData.GetProperty("id").GetString()!,
+                            Id = threadData.GetProperty("id").GetUInt64(),
                             Name = threadData.TryGetProperty("name", out JsonElement tn) ? (tn.GetString() ?? string.Empty) : string.Empty,
                             Type = threadData.TryGetProperty("type", out JsonElement tt) ? tt.GetInt32() : 0,
-                            Parent_Id = threadData.TryGetProperty("parent_id", out JsonElement tpid) && tpid.ValueKind != JsonValueKind.Null ? tpid.GetString() : null,
+                            Parent_Id = threadData.TryGetProperty("parent_id", out JsonElement tpid) && tpid.ValueKind != JsonValueKind.Null ? tpid.GetUInt64() : null,
                             Guild_Id = guildId
                         };
                         threadList.Add(thread);
@@ -273,9 +275,9 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
         {
             try
             {
-                Guild g = new()
+                DiscordGuild g = new()
                 {
-                    Id = data.GetProperty("id").GetString()!,
+                    Id = data.GetProperty("id").GetUInt64(),
                     Name = data.GetProperty("name").GetString() ?? string.Empty
                 };
                 GuildUpdate?.Invoke(this, g);
@@ -286,7 +288,7 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
         {
             try
             {
-                string gid = data.GetProperty("id").GetString()!;
+                ulong gid = data.GetProperty("id").GetUInt64();
                 GuildDelete?.Invoke(this, gid);
             }
             catch (Exception ex) { Error?.Invoke(this, ex); }
@@ -295,14 +297,14 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
         {
             try
             {
-                string guildId = data.GetProperty("guild_id").GetString()!;
-                Emoji[]? emojis = null;
+                ulong guildId = data.GetProperty("guild_id").GetUInt64();
+                DiscordEmoji[]? emojis = null;
                 if (data.TryGetProperty("emojis", out JsonElement emojisEl) && emojisEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Emoji> emojiList = [];
+                    List<DiscordEmoji> emojiList = [];
                     foreach (JsonElement emojiData in emojisEl.EnumerateArray())
                     {
-                        Emoji emoji = new()
+                        DiscordEmoji emoji = new()
                         {
                             Id = emojiData.TryGetProperty("id", out JsonElement eid) ? eid.GetString() : null,
                             Name = emojiData.TryGetProperty("name", out JsonElement en) ? en.GetString() : null,
@@ -376,25 +378,25 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
         {
             try
             {
-                string guildId = data.GetProperty("guild_id").GetString()!;
+                ulong guildId = data.GetProperty("guild_id").GetUInt64();
                 int chunkIndex = data.TryGetProperty("chunk_index", out JsonElement ci) ? ci.GetInt32() : 0;
                 int chunkCount = data.TryGetProperty("chunk_count", out JsonElement cc) ? cc.GetInt32() : 1;
 
-                Member[]? members = null;
+                DiscordMember[]? members = null;
                 if (data.TryGetProperty("members", out JsonElement membersEl) && membersEl.ValueKind == JsonValueKind.Array)
                 {
-                    List<Member> memberList = [];
+                    List<DiscordMember> memberList = [];
                     foreach (JsonElement memberData in membersEl.EnumerateArray())
                     {
                         if (memberData.TryGetProperty("user", out JsonElement userData))
                         {
-                            User user = ParseUser(userData);
-                            string[] memberRoles = memberData.TryGetProperty("roles", out JsonElement rolesArr) && rolesArr.ValueKind == JsonValueKind.Array
-                                ? rolesArr.EnumerateArray().Select(static x => x.GetString()!).ToArray()
+                            DiscordUser user = ParseUser(userData);
+                            ulong[] memberRoles = memberData.TryGetProperty("roles", out JsonElement rolesArr) && rolesArr.ValueKind == JsonValueKind.Array
+                                ? rolesArr.EnumerateArray().Select(static x => x.GetUInt64()).ToArray()
                                 : [];
                             string? nick = memberData.TryGetProperty("nick", out JsonElement nickEl) && nickEl.ValueKind != JsonValueKind.Null ? nickEl.GetString() : null;
 
-                            Member member = new() { User = user, Nick = nick, Roles = memberRoles };
+                            DiscordMember member = new() { User = user, Nick = nick, Roles = memberRoles };
                             memberList.Add(member);
                         }
                     }
@@ -428,8 +430,31 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
         {
             try
             {
-                User u = ParseUser(data);
+                DiscordUser u = ParseUser(data);
                 UserUpdate?.Invoke(this, u);
+            }
+            catch (Exception ex) { Error?.Invoke(this, ex); }
+        }
+
+        // Audit log events
+        else if (string.Equals(eventName, "GUILD_AUDIT_LOG_ENTRY_CREATE", StringComparison.Ordinal))
+        {
+            try
+            {
+                ulong guildId = data.GetProperty("guild_id").GetUInt64();
+                DiscordAuditLogEntry entry = new()
+                {
+                    Id = data.GetProperty("id").GetUInt64(),
+                    ActionType = data.GetProperty("action_type").GetInt32(),
+                    TargetId = data.TryGetProperty("target_id", out JsonElement tid) && tid.ValueKind != JsonValueKind.Null
+                        ? tid.GetUInt64() : null,
+                    UserId = data.TryGetProperty("user_id", out JsonElement uid) && uid.ValueKind != JsonValueKind.Null
+                        ? uid.GetUInt64() : null,
+                    Reason = data.TryGetProperty("reason", out JsonElement r) && r.ValueKind != JsonValueKind.Null
+                        ? r.GetString() : null
+                };
+                GatewayAuditLogEvent evt = new() { GuildId = guildId, Entry = entry };
+                GuildAuditLogEntryCreate?.Invoke(this, evt);
             }
             catch (Exception ex) { Error?.Invoke(this, ex); }
         }
@@ -479,9 +504,40 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                 string? channelId = data.TryGetProperty("channel_id", out JsonElement chIdEl) && chIdEl.ValueKind != JsonValueKind.Null ? chIdEl.GetString() : null;
 
                 Author? author = null;
-                if (data.TryGetProperty("member", out JsonElement memberObj) && memberObj.TryGetProperty("user", out JsonElement mu))
+                Entities.DiscordMember? member = null;
+
+                if (data.TryGetProperty("member", out JsonElement memberObj))
                 {
-                    author = new Author { Id = mu.GetProperty("id").GetString()!, Username = mu.TryGetProperty("username", out JsonElement un) ? (un.GetString() ?? string.Empty) : string.Empty };
+                    // Parse user from member
+                    if (memberObj.TryGetProperty("user", out JsonElement mu))
+                    {
+                        author = new Author { Id = mu.GetProperty("id").GetString()!, Username = mu.TryGetProperty("username", out JsonElement un) ? (un.GetString() ?? string.Empty) : string.Empty };
+
+                        // Parse full member object
+                        DiscordUser user = new()
+                        {
+                            Id = mu.GetProperty("id").GetUInt64(),
+                            Username = mu.TryGetProperty("username", out JsonElement uname) ? (uname.GetString() ?? string.Empty) : string.Empty,
+                            Discriminator = mu.TryGetProperty("discriminator", out JsonElement disc) && disc.ValueKind == JsonValueKind.String ? ushort.Parse(disc.GetString()!) : (ushort)0
+                        };
+
+                        ulong[] roles = memberObj.TryGetProperty("roles", out JsonElement rolesEl) && rolesEl.ValueKind == JsonValueKind.Array
+                            ? rolesEl.EnumerateArray().Select(r => r.GetUInt64()).ToArray()
+                            : [];
+
+                        string? nick = memberObj.TryGetProperty("nick", out JsonElement nickEl) && nickEl.ValueKind != JsonValueKind.Null ? nickEl.GetString() : null;
+
+                        ulong? permissions = memberObj.TryGetProperty("permissions", out JsonElement permsEl) && permsEl.ValueKind == JsonValueKind.String
+                            ? ulong.Parse(permsEl.GetString()!) : null;
+
+                        member = new DiscordMember
+                        {
+                            User = user,
+                            Nick = nick,
+                            Roles = roles,
+                            Permissions = permissions
+                        };
+                    }
                 }
                 else if (data.TryGetProperty("user", out JsonElement uo))
                 {
@@ -558,6 +614,8 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                         GuildId = guildId,
                         ChannelId = channelId,
                         Author = author,
+                        Member = member,
+                        Guild = null, // Will be populated by DiscordBot from cache
                         Data = cmd
                     };
                     InteractionCreate?.Invoke(this, evt);
@@ -587,6 +645,8 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                         GuildId = guildId,
                         ChannelId = channelId,
                         Author = author,
+                        Member = member,
+                        Guild = null, // Will be populated by DiscordBot from cache
                         Component = comp
                     };
                     InteractionCreate?.Invoke(this, evt);
@@ -625,6 +685,8 @@ internal sealed partial class GatewayClient(string token, DiscordIntents intents
                         GuildId = guildId,
                         ChannelId = channelId,
                         Author = author,
+                        Member = member,
+                        Guild = null, // Will be populated by DiscordBot from cache
                         Modal = modal
                     };
                     InteractionCreate?.Invoke(this, evt);

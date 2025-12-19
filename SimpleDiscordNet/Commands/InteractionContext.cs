@@ -22,6 +22,23 @@ public sealed class InteractionContext
     public InteractionType Type { get; }
 
     /// <summary>
+    /// The member entity if this interaction occurred in a guild.
+    /// Null for DM interactions.
+    /// </summary>
+    public Entities.DiscordMember? Member => _evt.Member;
+
+    /// <summary>
+    /// The guild entity if this is a guild interaction.
+    /// Null for DM interactions.
+    /// </summary>
+    public Entities.DiscordGuild? Guild => _evt.Guild;
+
+    /// <summary>
+    /// The channel entity if available in cache.
+    /// </summary>
+    public Entities.DiscordChannel? Channel => ChannelId is not null ? Context.DiscordContext.GetChannel(ulong.Parse(ChannelId))?.Channel : null;
+
+    /// <summary>
     /// The shard ID that received this interaction (0-based).
     /// Null if bot is not using sharding.
     /// Example: int? shard = ctx.ShardId;
@@ -61,6 +78,31 @@ public sealed class InteractionContext
     }
 
     /// <summary>
+    /// Sends an immediate response using a MessageBuilder.
+    /// Example: await ctx.RespondAsync(new MessageBuilder().WithContent("Hello").WithEmbed(embed));
+    /// </summary>
+    public Task RespondAsync(MessageBuilder builder, bool ephemeral = false, CancellationToken ct = default)
+    {
+        MessagePayload payload = builder.Build();
+
+        if (_deferred || _deferredUpdate)
+        {
+            return _rest.PostWebhookFollowupAsync(ApplicationId, InteractionToken, payload, ct);
+        }
+
+        InteractionResponseData data = new()
+        {
+            content = payload.content,
+            embeds = payload.embeds,
+            components = payload.components,
+            flags = ephemeral ? 1 << 6 : null
+        };
+
+        InteractionResponse resp = new() { type = 4, data = data };
+        return _rest.PostInteractionCallbackAsync(InteractionId, InteractionToken, resp, ct);
+    }
+
+    /// <summary>
     /// Sends an immediate response to the interaction with just text.
     /// Example: await ctx.RespondAsync("Hello, world!");
     /// </summary>
@@ -75,7 +117,7 @@ public sealed class InteractionContext
         InteractionResponseData data = new()
         {
             content = content,
-            embeds = embed is null ? null : [embed.ToModel()],
+            embeds = embed is null ? null : [embed.Build()],
             flags = ephemeral ? 1 << 6 : null // EPHEMERAL flag
         };
         InteractionResponse resp = new() { type = 4, data = data }; // CHANNEL_MESSAGE_WITH_SOURCE
@@ -89,10 +131,10 @@ public sealed class InteractionContext
     {
         if (_deferred || _deferredUpdate)
         {
-            var payload = new WebhookMessageRequest
+            WebhookMessageRequest payload = new()
             {
                 content = content,
-                embeds = embed is null ? null : [embed.ToModel()],
+                embeds = embed is null ? null : [embed.Build()],
                 flags = ephemeral ? 1 << 6 : null,
                 components = [new ActionRow(components.Cast<object>().ToArray())]
             };
@@ -102,7 +144,7 @@ public sealed class InteractionContext
         InteractionResponseData data = new()
         {
             content = content,
-            embeds = embed is null ? null : [embed.ToModel()],
+            embeds = embed is null ? null : [embed.Build()],
             flags = ephemeral ? 1 << 6 : null,
             components = [new ActionRow(components.Cast<object>().ToArray())]
         };
@@ -117,7 +159,7 @@ public sealed class InteractionContext
     /// </summary>
     public Task DeferAsync(bool ephemeral = false, CancellationToken ct = default)
     {
-        InteractionResponseData data = new InteractionResponseData { flags = ephemeral ? 1 << 6 : null };
+        InteractionResponseData data = new() { flags = ephemeral ? 1 << 6 : null };
         InteractionResponse resp = new() { type = 5, data = data }; // DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
         Task task = _rest.PostInteractionCallbackAsync(InteractionId, InteractionToken, resp, ct);
         // Mark as deferred once the defer completes successfully
@@ -147,7 +189,7 @@ public sealed class InteractionContext
         WebhookMessageRequest payload = new()
         {
             content = content,
-            embeds = embed is null ? null : [embed.ToModel()],
+            embeds = embed is null ? null : [embed.Build()],
             flags = ephemeral ? 1 << 6 : null
         };
         return _rest.PostWebhookFollowupAsync(ApplicationId, InteractionToken, payload, ct);

@@ -31,13 +31,13 @@ internal sealed class CoordinatorResumptionHandler
     {
         try
         {
-            var request = new CoordinatorResumptionRequest(
+            CoordinatorResumptionRequest request = new(
                 OriginalCoordinatorId: _processId,
                 OriginalCoordinatorUrl: _originalCoordinatorUrl,
                 Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             );
 
-            var handoff = await _client.PostAsync<CoordinatorResumptionRequest, CoordinatorHandoffData>(
+            CoordinatorHandoffData? handoff = await _client.PostAsync<CoordinatorResumptionRequest, CoordinatorHandoffData>(
                 $"{temporaryCoordinatorUrl}/coordinator/resume",
                 request,
                 ct
@@ -73,7 +73,7 @@ internal sealed class CoordinatorResumptionHandler
     /// </summary>
     public async Task AnnounceResumptionAsync(PeerNode[] workers, List<SuccessionEntry> successionOrder, string previousCoordinatorId, CancellationToken ct = default)
     {
-        var announcement = new CoordinatorResumedAnnouncement(
+        CoordinatorResumedAnnouncement announcement = new(
             ResumedCoordinatorId: _processId,
             ResumedCoordinatorUrl: _originalCoordinatorUrl,
             PreviousCoordinatorId: previousCoordinatorId,
@@ -82,17 +82,17 @@ internal sealed class CoordinatorResumptionHandler
             Message: "Original coordinator has resumed control"
         );
 
-        var tasks = workers.Select(async worker =>
+        IEnumerable<Task> tasks = workers.Select(async worker =>
         {
             try
             {
-                var state = worker.ToState();
+                PeerNodeState state = worker.ToState();
                 await _client.PostAsync($"{state.Url}/coordinator/resumed", announcement, ct).ConfigureAwait(false);
                 _logger.Log(LogLevel.Information, $"Announced resumption to worker {state.ProcessId}");
             }
             catch (Exception ex)
             {
-                var state = worker.ToState();
+                PeerNodeState state = worker.ToState();
                 _logger.Log(LogLevel.Error, $"Failed to announce resumption to {state.ProcessId}: {ex.Message}", ex);
             }
         });
@@ -108,8 +108,8 @@ internal sealed class CoordinatorResumptionHandler
     {
         try
         {
-            var response = await _client.GetAsync<HealthCheckResponse>($"{coordinatorUrl}/health", ct).ConfigureAwait(false);
-            return response != null && response.Status == "healthy";
+            HealthCheckResponse? response = await _client.GetAsync<HealthCheckResponse>($"{coordinatorUrl}/health", ct).ConfigureAwait(false);
+            return response is { Status: "healthy" };
         }
         catch
         {

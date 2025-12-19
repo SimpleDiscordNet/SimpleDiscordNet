@@ -6,19 +6,19 @@ namespace SimpleDiscordNet.Gateway;
 
 internal sealed partial class GatewayClient
 {
-    private void TryEmitChannelEvent(JsonElement data, EventHandler<Channel>? evt)
+    private void TryEmitChannelEvent(JsonElement data, EventHandler<DiscordChannel>? evt)
     {
         try
         {
             // Ignore if not a guild channel (e.g., DM has no guild_id)
             if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
-            string id = data.GetProperty("id").GetString()!;
+            ulong id = data.GetProperty("id").GetUInt64();
             string name = data.TryGetProperty("name", out JsonElement n) ? (n.GetString() ?? string.Empty) : string.Empty;
             int type = data.TryGetProperty("type", out JsonElement t) ? t.GetInt32() : 0;
-            string? parent = data.TryGetProperty("parent_id", out JsonElement p) && p.ValueKind != JsonValueKind.Null ? p.GetString() : null;
-            string? guildId = gidProp.GetString();
+            ulong? parent = data.TryGetProperty("parent_id", out JsonElement p) && p.ValueKind != JsonValueKind.Null ? p.GetUInt64() : null;
+            ulong? guildId = gidProp.GetUInt64();
 
-            Channel ch = new()
+            DiscordChannel ch = new()
             {
                 Id = id,
                 Name = name,
@@ -36,14 +36,14 @@ internal sealed partial class GatewayClient
         try
         {
             if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
-            User user = ParseUser(data.GetProperty("user"));
-            string[] roles = data.TryGetProperty("roles", out JsonElement r) && r.ValueKind == JsonValueKind.Array
-                ? r.EnumerateArray().Select(static x => x.GetString()!).ToArray()
+            DiscordUser user = ParseUser(data.GetProperty("user"));
+            ulong[] roles = data.TryGetProperty("roles", out JsonElement r) && r.ValueKind == JsonValueKind.Array
+                ? r.EnumerateArray().Select(static x => x.GetUInt64()).ToArray()
                 : [];
             string? nick = data.TryGetProperty("nick", out JsonElement n) && n.ValueKind != JsonValueKind.Null ? n.GetString() : null;
 
-            Member member = new() { User = user, Nick = nick, Roles = roles };
-            evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetString()!, Member = member });
+            DiscordMember member = new() { User = user, Nick = nick, Roles = roles };
+            evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetUInt64(), Member = member });
         }
         catch (Exception ex) { Error?.Invoke(this, ex); }
     }
@@ -53,9 +53,9 @@ internal sealed partial class GatewayClient
         try
         {
             if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
-            User user = ParseUser(data.GetProperty("user"));
-            Member member = new Member { User = user, Nick = null, Roles = Array.Empty<string>() };
-            evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetString()!, Member = member });
+            DiscordUser user = ParseUser(data.GetProperty("user"));
+            DiscordMember member = new() { User = user, Nick = null, Roles = [] };
+            evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetUInt64(), Member = member });
         }
         catch (Exception ex) { Error?.Invoke(this, ex); }
     }
@@ -64,8 +64,8 @@ internal sealed partial class GatewayClient
     {
         try
         {
-            string guildId = data.GetProperty("guild_id").GetString()!;
-            User user = ParseUser(data.GetProperty("user"));
+            ulong guildId = data.GetProperty("guild_id").GetUInt64();
+            DiscordUser user = ParseUser(data.GetProperty("user"));
             evt?.Invoke(this, new GatewayUserEvent { GuildId = guildId, User = user });
         }
         catch (Exception ex) { Error?.Invoke(this, ex); }
@@ -76,16 +76,16 @@ internal sealed partial class GatewayClient
         try
         {
             if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
-            string guildId = gidProp.GetString()!;
+            ulong guildId = gidProp.GetUInt64();
             JsonElement roleData = data.GetProperty("role");
 
-            Role role = new()
+            DiscordRole role = new()
             {
-                Id = roleData.GetProperty("id").GetString()!,
+                Id = roleData.GetProperty("id").GetUInt64(),
                 Name = roleData.GetProperty("name").GetString() ?? string.Empty,
                 Color = roleData.TryGetProperty("color", out JsonElement c) ? c.GetInt32() : 0,
                 Position = roleData.TryGetProperty("position", out JsonElement p) ? p.GetInt32() : 0,
-                Permissions = roleData.TryGetProperty("permissions", out JsonElement perms) ? perms.GetString() : null
+                Permissions = roleData.TryGetProperty("permissions", out JsonElement perms) ? perms.GetUInt64() : 0UL
             };
             evt?.Invoke(this, new GatewayRoleEvent { GuildId = guildId, Role = role });
         }
@@ -97,10 +97,10 @@ internal sealed partial class GatewayClient
         try
         {
             if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
-            string guildId = gidProp.GetString()!;
-            string roleId = data.GetProperty("role_id").GetString()!;
+            ulong guildId = gidProp.GetUInt64();
+            ulong roleId = data.GetProperty("role_id").GetUInt64();
 
-            Role role = new()
+            DiscordRole role = new()
             {
                 Id = roleId,
                 Name = string.Empty
@@ -114,11 +114,12 @@ internal sealed partial class GatewayClient
     {
         try
         {
-            string messageId = data.GetProperty("id").GetString()!;
-            string channelId = data.GetProperty("channel_id").GetString()!;
-            string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+            ulong messageId = data.GetProperty("id").GetUInt64();
+            ulong channelId = data.GetProperty("channel_id").GetUInt64();
+            ulong? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetUInt64() : null;
             string? content = data.TryGetProperty("content", out JsonElement c) ? c.GetString() : null;
-            string? editedTimestamp = data.TryGetProperty("edited_timestamp", out JsonElement et) ? et.GetString() : null;
+            DateTimeOffset? editedTimestamp = data.TryGetProperty("edited_timestamp", out JsonElement et) && et.ValueKind != JsonValueKind.Null
+                ? DateTimeOffset.Parse(et.GetString()!) : null;
 
             MessageUpdateEvent e = new()
             {
@@ -137,9 +138,9 @@ internal sealed partial class GatewayClient
     {
         try
         {
-            string messageId = data.GetProperty("id").GetString()!;
-            string channelId = data.GetProperty("channel_id").GetString()!;
-            string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+            ulong messageId = data.GetProperty("id").GetUInt64();
+            ulong channelId = data.GetProperty("channel_id").GetUInt64();
+            ulong? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetUInt64() : null;
 
             MessageEvent e = new()
             {
@@ -159,14 +160,14 @@ internal sealed partial class GatewayClient
             // For bulk delete, we emit one event per message
             if (data.TryGetProperty("ids", out JsonElement ids) && ids.ValueKind == JsonValueKind.Array)
             {
-                string channelId = data.GetProperty("channel_id").GetString()!;
-                string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+                ulong channelId = data.GetProperty("channel_id").GetUInt64();
+                ulong? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetUInt64() : null;
 
                 foreach (JsonElement id in ids.EnumerateArray())
                 {
                     MessageEvent e = new()
                     {
-                        MessageId = id.GetString()!,
+                        MessageId = id.GetUInt64(),
                         ChannelId = channelId,
                         GuildId = guildId
                     };
@@ -181,16 +182,16 @@ internal sealed partial class GatewayClient
     {
         try
         {
-            string userId = data.GetProperty("user_id").GetString()!;
-            string channelId = data.GetProperty("channel_id").GetString()!;
-            string messageId = data.GetProperty("message_id").GetString()!;
-            string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+            ulong userId = data.GetProperty("user_id").GetUInt64();
+            ulong channelId = data.GetProperty("channel_id").GetUInt64();
+            ulong messageId = data.GetProperty("message_id").GetUInt64();
+            ulong? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetUInt64() : null;
 
             JsonElement emojiData = data.GetProperty("emoji");
             string? emojiId = emojiData.TryGetProperty("id", out JsonElement eid) ? eid.GetString() : null;
             string? emojiName = emojiData.TryGetProperty("name", out JsonElement en) ? en.GetString() : null;
 
-            Emoji emoji = new() { Id = emojiId, Name = emojiName };
+            DiscordEmoji emoji = new() { Id = emojiId, Name = emojiName };
 
             ReactionEvent e = new()
             {
@@ -209,19 +210,19 @@ internal sealed partial class GatewayClient
     {
         try
         {
-            string channelId = data.GetProperty("channel_id").GetString()!;
-            string messageId = data.GetProperty("message_id").GetString()!;
-            string? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetString() : null;
+            ulong channelId = data.GetProperty("channel_id").GetUInt64();
+            ulong messageId = data.GetProperty("message_id").GetUInt64();
+            ulong? guildId = data.TryGetProperty("guild_id", out JsonElement gid) ? gid.GetUInt64() : null;
 
             JsonElement emojiData = data.GetProperty("emoji");
             string? emojiId = emojiData.TryGetProperty("id", out JsonElement eid) ? eid.GetString() : null;
             string? emojiName = emojiData.TryGetProperty("name", out JsonElement en) ? en.GetString() : null;
 
-            Emoji emoji = new() { Id = emojiId, Name = emojiName };
+            DiscordEmoji emoji = new() { Id = emojiId, Name = emojiName };
 
             ReactionEvent e = new()
             {
-                UserId = string.Empty, // No specific user for this event
+                UserId = 0UL, // No specific user for this event
                 ChannelId = channelId,
                 MessageId = messageId,
                 GuildId = guildId,
@@ -232,11 +233,11 @@ internal sealed partial class GatewayClient
         catch (Exception ex) { Error?.Invoke(this, ex); }
     }
 
-    private static User ParseUser(JsonElement obj)
+    private static DiscordUser ParseUser(JsonElement obj)
     {
-        return new User
+        return new DiscordUser
         {
-            Id = obj.GetProperty("id").GetString()!,
+            Id = obj.GetProperty("id").GetUInt64(),
             Username = obj.TryGetProperty("username", out JsonElement un) ? (un.GetString() ?? string.Empty) : string.Empty
         };
     }

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using SimpleDiscordNet.Logging;
+using SimpleDiscordNet.Sharding.Models;
 
 namespace SimpleDiscordNet.Sharding;
 
@@ -55,11 +56,11 @@ internal sealed class HealthMonitor : IDisposable
         try
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var failedPeers = new List<PeerNode>();
+            List<PeerNode> failedPeers = [];
 
-            foreach (var peer in _peers.Values)
+            foreach (PeerNode peer in _peers.Values)
             {
-                var peerState = peer.ToState();
+                PeerNodeState peerState = peer.ToState();
                 long timeSinceHeartbeat = now - peerState.LastHeartbeat;
 
                 if (timeSinceHeartbeat > FailureThresholdMs)
@@ -68,9 +69,9 @@ internal sealed class HealthMonitor : IDisposable
                 }
             }
 
-            foreach (var failed in failedPeers)
+            foreach (PeerNode failed in failedPeers)
             {
-                var failedState = failed.ToState();
+                PeerNodeState failedState = failed.ToState();
                 double secondsSinceHeartbeat = (now - failedState.LastHeartbeat) / 1000.0;
                 _logger.Log(LogLevel.Error, $"Peer {failedState.ProcessId} failed health check (last heartbeat: {secondsSinceHeartbeat:F1}s ago)");
                 _onPeerFailed(failed);
