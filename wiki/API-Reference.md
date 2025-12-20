@@ -137,12 +137,14 @@ Define command parameter options with constraints.
 
 **Supported Parameter Types:**
 - `string` → Discord STRING (type 3)
-- `int`, `long` → Discord INTEGER (type 4)
+- `int`, `long`, `ulong` → Discord INTEGER (type 4) - **v1.4.3:** Added `ulong` support
 - `bool` → Discord BOOLEAN (type 5)
 - `User` → Discord USER (type 6)
 - `Channel` → Discord CHANNEL (type 7)
 - `Role` → Discord ROLE (type 8)
 - `double`, `float` → Discord NUMBER (type 10)
+
+**Note (v1.4.3+):** The `[CommandOption]` attribute is now **optional**. Parameters without it will be auto-detected from the method signature, using the parameter name as the option name and "option" as the description.
 
 **Example:**
 
@@ -277,11 +279,31 @@ Represents a Discord channel.
 
 #### Methods
 
+**Basic Operations:**
 ```csharp
 Task<Message> SendMessageAsync(string content = null, Embed embed = null)
 Task<Message> GetMessageAsync(ulong messageId)
 Task DeleteAsync()
 Task ModifyAsync(string name = null, string topic = null, int? position = null)
+```
+
+**Permission Management (v1.4.3+):**
+```csharp
+// Add/remove single permissions
+Task AddPermissionAsync(ulong targetId, PermissionFlags permission, bool isRole = true)
+Task RemovePermissionAsync(ulong targetId, PermissionFlags permission, bool isRole = true)
+Task DenyPermissionAsync(ulong targetId, PermissionFlags permission, bool isRole = true)
+
+// Modify multiple permissions
+Task ModifyPermissionsAsync(ulong targetId, PermissionFlags? allow = null, PermissionFlags? deny = null, bool isRole = true)
+
+// Delete all overwrites
+Task DeletePermissionOverwriteAsync(ulong targetId)
+
+// Read permissions
+ChannelPermissionOverwrite? GetOverwrite(ulong id)
+IEnumerable<ChannelPermissionOverwrite> GetRoleOverwrites()
+IEnumerable<ChannelPermissionOverwrite> GetMemberOverwrites()
 ```
 
 ### User
@@ -328,12 +350,22 @@ Represents a guild member.
 
 #### Methods
 
+**Role Management:**
 ```csharp
 Task AddRoleAsync(Role role)
 Task RemoveRoleAsync(Role role)
 Task ModifyAsync(string nickname = null)
 Task KickAsync(string reason = null)
 Task BanAsync(int deleteMessageDays = 0, string reason = null)
+```
+
+**Channel Permissions (v1.4.3+):**
+```csharp
+Task AddChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission)
+Task RemoveChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission)
+Task DenyChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission)
+Task ModifyChannelPermissionsAsync(DiscordChannel channel, PermissionFlags? allow = null, PermissionFlags? deny = null)
+Task DeleteChannelPermissionOverwriteAsync(DiscordChannel channel)
 ```
 
 ### Role
@@ -356,9 +388,19 @@ Represents a guild role.
 
 #### Methods
 
+**Basic Operations:**
 ```csharp
 Task ModifyAsync(string name = null, DiscordColor? color = null, PermissionFlags? permissions = null)
 Task DeleteAsync()
+```
+
+**Channel Permissions (v1.4.3+):**
+```csharp
+Task AddChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission)
+Task RemoveChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission)
+Task DenyChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission)
+Task ModifyChannelPermissionsAsync(DiscordChannel channel, PermissionFlags? allow = null, PermissionFlags? deny = null)
+Task DeleteChannelPermissionOverwriteAsync(DiscordChannel channel)
 ```
 
 ### Message
