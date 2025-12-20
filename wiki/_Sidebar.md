@@ -1,19 +1,22 @@
 ### SimpleDiscordDotNet Wiki
 
-**[🏠 Home](Home)** *(v1.4.0)*
+**[🏠 Home](Home)** *(v1.5.0)*
 
 ---
 
 ### Getting Started
 - [Installation](Installation)
 - [Getting Started](Getting-Started)
+- [**Beginner's Guide**](Beginners-Guide) **⭐ NEW**
 - [Configuration](Configuration)
 
 ---
 
-### Commands & Interactions
+### Core Concepts
+- [**Working with Entities**](Entities) **⭐ NEW**
 - [Commands](Commands)
 - [Embeds](Embeds)
+- [Events](Events)
 
 ---
 
@@ -22,13 +25,8 @@
 
 ---
 
-### Data & Events
-- [Events](Events)
-
----
-
 ### Advanced
-- [Sharding](Sharding) **🔒 HTTPS in v1.4.0**
+- [Sharding](Sharding)
 - [Performance Optimizations](Performance-Optimizations)
 - [Rate Limit Monitoring](Rate-Limit-Monitoring)
 - [API Reference](API-Reference)

@@ -153,7 +153,7 @@ internal sealed class ShardManager : IDisposable
         EventHandler? onConnected,
         EventHandler<Exception?>? onDisconnected,
         EventHandler<Exception>? onError,
-        EventHandler<MessageCreateEvent>? onMessageCreate,
+        EventHandler<MessageCreateEventRaw>? onMessageCreate,
         EventHandler<InteractionCreateEvent>? onInteractionCreate,
         EventHandler<Events.GuildCreateEvent>? onGuildCreate,
         EventHandler<Entities.DiscordGuild>? onGuildUpdate,

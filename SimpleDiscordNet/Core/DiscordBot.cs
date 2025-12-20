@@ -34,6 +34,8 @@ public sealed class DiscordBot : IDiscordBot
     private readonly CancellationTokenSource _cts = new();
     private readonly EntityCache _cache = new();
 
+    private DiscordUser? _botUser; // Bot's own user object
+
     private readonly bool _preloadGuilds;
     private readonly bool _preloadChannels;
     private readonly bool _preloadMembers;
@@ -142,6 +144,13 @@ public sealed class DiscordBot : IDiscordBot
         WireGatewayEvents();
     }
 
+    /// <summary>
+    /// The bot's own user object. Available after connection.
+    /// Use this to identify if a message/event was triggered by the bot itself.
+    /// Example: if (msg.Author.Id == bot.BotUser?.Id) return; // Ignore self
+    /// </summary>
+    public DiscordUser? BotUser => _botUser;
+
     // Events are surfaced via static SimpleDiscordNet.Events.DiscordEvents
 
     /// <summary>
@@ -160,7 +169,7 @@ public sealed class DiscordBot : IDiscordBot
         }
 
         // Register ambient provider so consumers can access cached data.
-        DiscordContext.SetProvider(_cache.SnapshotGuilds, _cache.SnapshotChannels, _cache.SnapshotMembers, _cache.SnapshotUsers, _cache.SnapshotRoles);
+        DiscordContext.SetProvider(this, _botUser, _cache.SnapshotGuilds, _cache.SnapshotChannels, _cache.SnapshotMembers, _cache.SnapshotUsers, _cache.SnapshotRoles);
 
         // Optionally preload caches using REST (runs in background)
         if (_preloadGuilds || _preloadChannels || _preloadMembers)
@@ -306,20 +315,60 @@ public sealed class DiscordBot : IDiscordBot
     /// <summary>
     /// Sends a simple message to a channel with optional embed.
     /// </summary>
-    public Task SendMessageAsync(string channelId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+    public Task<DiscordMessage?> SendMessageAsync(string channelId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
     {
         CreateMessageRequest payload = new()
         {
             content = content,
             embeds = embed is null ? null : [embed.Build()]
         };
-        return _rest.PostAsync($"/channels/{channelId}/messages", payload, ct);
+        return _rest.PostAsync<DiscordMessage>($"/channels/{channelId}/messages", payload, ct);
     }
+
+    /// <summary>
+    /// Sends a simple message to a channel with optional embed.
+    /// </summary>
+    public Task<DiscordMessage?> SendMessageAsync(ulong channelId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+        => SendMessageAsync(channelId.ToString(), content, embed, ct);
+
+    /// <summary>
+    /// Sends a simple message to a channel with optional embed.
+    /// </summary>
+    public Task<DiscordMessage?> SendMessageAsync(DiscordChannel channel, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+        => SendMessageAsync(channel.Id, content, embed, ct);
+
+    /// <summary>
+    /// Sends a message using a MessageBuilder.
+    /// </summary>
+    public Task<DiscordMessage?> SendMessageAsync(string channelId, MessageBuilder builder, CancellationToken ct = default)
+    {
+        MessagePayload payload = builder.Build();
+        CreateMessageRequest request = new()
+        {
+            content = payload.content,
+            embeds = payload.embeds,
+            components = payload.components,
+            allowed_mentions = payload.allowed_mentions
+        };
+        return _rest.PostAsync<DiscordMessage>($"/channels/{channelId}/messages", request, ct);
+    }
+
+    /// <summary>
+    /// Sends a message using a MessageBuilder.
+    /// </summary>
+    public Task<DiscordMessage?> SendMessageAsync(ulong channelId, MessageBuilder builder, CancellationToken ct = default)
+        => SendMessageAsync(channelId.ToString(), builder, ct);
+
+    /// <summary>
+    /// Sends a message using a MessageBuilder.
+    /// </summary>
+    public Task<DiscordMessage?> SendMessageAsync(DiscordChannel channel, MessageBuilder builder, CancellationToken ct = default)
+        => SendMessageAsync(channel.Id, builder, ct);
 
     /// <summary>
     /// Sends a message with a single attachment.
     /// </summary>
-    public Task SendAttachmentAsync(string channelId, string content, string fileName, ReadOnlyMemory<byte> data, EmbedBuilder? embed = null, CancellationToken ct = default)
+    public Task<DiscordMessage?> SendAttachmentAsync(string channelId, string content, string fileName, ReadOnlyMemory<byte> data, EmbedBuilder? embed = null, CancellationToken ct = default)
     {
         CreateMessageRequest payload = new()
         {
@@ -327,8 +376,20 @@ public sealed class DiscordBot : IDiscordBot
             embeds = embed is null ? null : [embed.Build()],
             attachments = [new { id = 0, filename = fileName }]
         };
-        return _rest.PostMultipartAsync($"/channels/{channelId}/messages", payload, (fileName, data), ct);
+        return _rest.PostMultipartAsync<DiscordMessage>($"/channels/{channelId}/messages", payload, (fileName, data), ct);
     }
+
+    /// <summary>
+    /// Sends a message with a single attachment.
+    /// </summary>
+    public Task<DiscordMessage?> SendAttachmentAsync(ulong channelId, string content, string fileName, ReadOnlyMemory<byte> data, EmbedBuilder? embed = null, CancellationToken ct = default)
+        => SendAttachmentAsync(channelId.ToString(), content, fileName, data, embed, ct);
+
+    /// <summary>
+    /// Sends a message with a single attachment.
+    /// </summary>
+    public Task<DiscordMessage?> SendAttachmentAsync(DiscordChannel channel, string content, string fileName, ReadOnlyMemory<byte> data, EmbedBuilder? embed = null, CancellationToken ct = default)
+        => SendAttachmentAsync(channel.Id, content, fileName, data, embed, ct);
 
     /// <summary>
     /// Gets a guild by id.
@@ -337,16 +398,46 @@ public sealed class DiscordBot : IDiscordBot
         => _rest.GetAsync<DiscordGuild>($"/guilds/{guildId}", ct);
 
     /// <summary>
+    /// Gets a guild by id.
+    /// </summary>
+    public Task<DiscordGuild?> GetGuildAsync(ulong guildId, CancellationToken ct = default)
+        => GetGuildAsync(guildId.ToString(), ct);
+
+    /// <summary>
     /// Gets channels of a guild.
     /// </summary>
     public Task<DiscordChannel[]?> GetGuildChannelsAsync(string guildId, CancellationToken ct = default)
         => _rest.GetAsync<DiscordChannel[]>($"/guilds/{guildId}/channels", ct);
 
     /// <summary>
+    /// Gets channels of a guild.
+    /// </summary>
+    public Task<DiscordChannel[]?> GetGuildChannelsAsync(ulong guildId, CancellationToken ct = default)
+        => GetGuildChannelsAsync(guildId.ToString(), ct);
+
+    /// <summary>
+    /// Gets channels of a guild.
+    /// </summary>
+    public Task<DiscordChannel[]?> GetGuildChannelsAsync(DiscordGuild guild, CancellationToken ct = default)
+        => GetGuildChannelsAsync(guild.Id, ct);
+
+    /// <summary>
     /// Gets roles of a guild.
     /// </summary>
     public Task<DiscordRole[]?> GetGuildRolesAsync(string guildId, CancellationToken ct = default)
         => _rest.GetAsync<DiscordRole[]>($"/guilds/{guildId}/roles", ct);
+
+    /// <summary>
+    /// Gets roles of a guild.
+    /// </summary>
+    public Task<DiscordRole[]?> GetGuildRolesAsync(ulong guildId, CancellationToken ct = default)
+        => GetGuildRolesAsync(guildId.ToString(), ct);
+
+    /// <summary>
+    /// Gets roles of a guild.
+    /// </summary>
+    public Task<DiscordRole[]?> GetGuildRolesAsync(DiscordGuild guild, CancellationToken ct = default)
+        => GetGuildRolesAsync(guild.Id, ct);
 
     /// <summary>
     /// Lists members of a guild with pagination support.
@@ -357,6 +448,12 @@ public sealed class DiscordBot : IDiscordBot
         string route = $"/guilds/{guildId}/members?limit={limit}" + (after is null ? string.Empty : $"&after={after}");
         return _rest.GetAsync<DiscordMember[]>(route, ct);
     }
+
+    public Task<DiscordMember[]?> ListGuildMembersAsync(ulong guildId, int limit = 1000, string? after = null, CancellationToken ct = default)
+        => ListGuildMembersAsync(guildId.ToString(), limit, after, ct);
+
+    public Task<DiscordMember[]?> ListGuildMembersAsync(DiscordGuild guild, int limit = 1000, string? after = null, CancellationToken ct = default)
+        => ListGuildMembersAsync(guild.Id, limit, after, ct);
 
     /// <summary>
     /// Sets or updates a channel permission overwrite for a role or member.
@@ -429,16 +526,16 @@ public sealed class DiscordBot : IDiscordBot
     /// </summary>
     /// <param name="guildId">Guild ID</param>
     /// <param name="name">Channel name</param>
-    /// <param name="type">Channel type (0=text, 2=voice, 4=category, etc.)</param>
+    /// <param name="type">Channel type</param>
     /// <param name="parentId">Parent category ID (optional)</param>
     /// <param name="permissionOverwrites">Permission overwrites (optional)</param>
     /// <param name="ct">Cancellation token</param>
-    public Task<DiscordChannel?> CreateChannelAsync(string guildId, string name, int type, string? parentId = null, object[]? permissionOverwrites = null, CancellationToken ct = default)
+    public Task<DiscordChannel?> CreateChannelAsync(string guildId, string name, Entities.ChannelType type, string? parentId = null, object[]? permissionOverwrites = null, CancellationToken ct = default)
     {
         var payload = new
         {
             name,
-            type,
+            type = (int)type,
             parent_id = parentId,
             permission_overwrites = permissionOverwrites
         };
@@ -449,30 +546,36 @@ public sealed class DiscordBot : IDiscordBot
     /// Creates a new text channel in a guild.
     /// </summary>
     public Task<DiscordChannel?> CreateTextChannelAsync(string guildId, string name, string? parentId = null, CancellationToken ct = default)
-        => CreateChannelAsync(guildId, name, DiscordChannel.ChannelType.GuildText, parentId, ct: ct);
+        => CreateChannelAsync(guildId, name, Entities.ChannelType.GuildText, parentId, ct: ct);
 
     /// <summary>
     /// Creates a new voice channel in a guild.
     /// </summary>
     public Task<DiscordChannel?> CreateVoiceChannelAsync(string guildId, string name, string? parentId = null, CancellationToken ct = default)
-        => CreateChannelAsync(guildId, name, DiscordChannel.ChannelType.GuildVoice, parentId, ct: ct);
+        => CreateChannelAsync(guildId, name, Entities.ChannelType.GuildVoice, parentId, ct: ct);
 
     /// <summary>
     /// Creates a new category channel in a guild.
     /// </summary>
     public Task<DiscordChannel?> CreateCategoryAsync(string guildId, string name, CancellationToken ct = default)
-        => CreateChannelAsync(guildId, name, DiscordChannel.ChannelType.GuildCategory, ct: ct);
+        => CreateChannelAsync(guildId, name, Entities.ChannelType.GuildCategory, ct: ct);
 
     /// <summary>
     /// Modifies a channel.
     /// </summary>
-    public Task<DiscordChannel?> ModifyChannelAsync(string channelId, string? name = null, int? type = null, string? parentId = null, CancellationToken ct = default)
+    public Task<DiscordChannel?> ModifyChannelAsync(string channelId, string? name = null, int? type = null, string? parentId = null, int? position = null, string? topic = null, bool? nsfw = null, int? bitrate = null, int? userLimit = null, int? rateLimitPerUser = null, CancellationToken ct = default)
     {
         var payload = new
         {
             name,
             type,
-            parent_id = parentId
+            parent_id = parentId,
+            position,
+            topic,
+            nsfw,
+            bitrate,
+            user_limit = userLimit,
+            rate_limit_per_user = rateLimitPerUser
         };
         return _rest.PatchChannelAsync<DiscordChannel>(channelId, payload, ct);
     }
@@ -800,7 +903,7 @@ public sealed class DiscordBot : IDiscordBot
     /// Sends a direct message to a user by creating a DM channel and sending a message.
     /// Example: await bot.SendDMAsync(userId, "Hello!");
     /// </summary>
-    public async Task SendDMAsync(string userId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+    public async Task<DiscordMessage?> SendDMAsync(string userId, string content, EmbedBuilder? embed = null, CancellationToken ct = default)
     {
         // Create DM channel first
         var dmPayload = new { recipient_id = userId };
@@ -810,9 +913,29 @@ public sealed class DiscordBot : IDiscordBot
 
         if (dmChannel is not null)
         {
-            await SendMessageAsync(dmChannel.Id.ToString(), content, embed, ct).ConfigureAwait(false);
+            // Cache the DM channel so it's available in DiscordContext
+            // DM channels don't have a guild, so we use guildId of 0
+            _cache.UpsertChannel(0, dmChannel);
+
+            return await SendMessageAsync(dmChannel.Id.ToString(), content, embed, ct).ConfigureAwait(false);
         }
+
+        return null;
     }
+
+    /// <summary>
+    /// Pins a message in a channel.
+    /// Example: await bot.PinMessageAsync(channelId, messageId);
+    /// </summary>
+    public Task PinMessageAsync(ulong channelId, ulong messageId, CancellationToken ct = default)
+        => _rest.PutAsync($"/channels/{channelId}/pins/{messageId}", new { }, ct);
+
+    /// <summary>
+    /// Deletes a message from a channel.
+    /// Example: await bot.DeleteMessageAsync(channelId, messageId);
+    /// </summary>
+    public Task DeleteMessageAsync(ulong channelId, ulong messageId, CancellationToken ct = default)
+        => _rest.DeleteMessageAsync(channelId.ToString(), messageId.ToString(), ct);
 
     // Event handler methods for gateway events
     private void OnConnected(object? sender, EventArgs e) => DiscordEvents.RaiseConnected(this);
@@ -1042,7 +1165,11 @@ public sealed class DiscordBot : IDiscordBot
         DiscordEvents.RaiseBanRemoved(this, new BanEvent { User = e.User, Guild = guild, Member = null });
     }
 
-    private void OnUserUpdate(object? sender, DiscordUser u) => DiscordEvents.RaiseBotUserUpdated(this, new BotUserEvent { User = u });
+    private void OnUserUpdate(object? sender, DiscordUser u)
+    {
+        _botUser = u; // Store bot's own user
+        DiscordEvents.RaiseBotUserUpdated(this, new BotUserEvent { User = u });
+    }
 
     private void OnGuildAuditLogEntryCreate(object? sender, GatewayAuditLogEvent e)
     {
@@ -1081,13 +1208,68 @@ public sealed class DiscordBot : IDiscordBot
         _gateway.Disconnected += OnDisconnected;
         _gateway.Error += OnError;
 
-        // Direct messages
-        _gateway.MessageCreate += (_, msg) =>
+        // Message events
+        _gateway.MessageCreate += (_, rawMsg) =>
         {
-            // DM when no guild id present
-            if (msg.GuildId is not null) return;
-            CommandContext ctx = new(msg.ChannelId, msg, _rest);
-            DiscordEvents.RaiseDirectMessageReceived(this, new DirectMessageEvent { Message = msg, Context = ctx });
+            try
+            {
+                // Parse IDs
+                if (!ulong.TryParse(rawMsg.Id, out ulong messageId)) return;
+                if (!ulong.TryParse(rawMsg.ChannelId, out ulong channelId)) return;
+                ulong authorId = rawMsg.Author.Id;
+
+                // Resolve entities from cache using DiscordContext
+                DiscordChannel? channel = Context.DiscordContext.GetChannel(channelId);
+                DiscordGuild? guild = rawMsg.GuildId != null && ulong.TryParse(rawMsg.GuildId, out ulong guildId)
+                    ? Context.DiscordContext.GetGuild(guildId)
+                    : null;
+
+                // Try to get author from members cache first (has more info)
+                DiscordUser? author = null;
+                if (guild != null)
+                {
+                    var member = Context.DiscordContext.GetMember(authorId, guild.Id);
+                    author = member?.User;
+                }
+
+                // If not in cache, create a minimal user object from the raw data
+                if (author == null)
+                {
+                    author = new DiscordUser
+                    {
+                        Id = authorId,
+                        Username = rawMsg.Author.Username,
+                        Guilds = []
+                    };
+                }
+
+                // Channel is required - if we don't have it, skip the event
+                if (channel == null) return;
+
+                // Create enriched event
+                MessageCreateEvent evt = new()
+                {
+                    Id = messageId,
+                    Channel = channel,
+                    Guild = guild,
+                    Content = rawMsg.Content,
+                    Author = author
+                };
+
+                // Raise MessageCreated for all messages (guild and DM)
+                DiscordEvents.RaiseMessageCreated(this, evt);
+
+                // Also raise DirectMessageReceived for DMs
+                if (rawMsg.GuildId is null)
+                {
+                    CommandContext ctx = new(rawMsg.ChannelId, rawMsg, _rest);
+                    DiscordEvents.RaiseDirectMessageReceived(this, new DirectMessageEvent { Message = rawMsg, Context = ctx });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning, $"Failed to process MESSAGE_CREATE event: {ex.Message}");
+            }
         };
 
         // Slash interactions

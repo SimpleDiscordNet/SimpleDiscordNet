@@ -34,12 +34,28 @@ public sealed class AppCommands
 {
     [SlashCommand("hello", "Say hello")]
     public async Task HelloAsync(InteractionContext ctx)
-        => await ctx.RespondAsync("Hello from SimpleDiscordDotNet!");
+    {
+        var embed = new EmbedBuilder()
+            .WithTitle("Hello!")
+            .WithDescription("Welcome to SimpleDiscordDotNet")
+            .WithColor(0x00FF00);
+
+        await ctx.RespondAsync(embed: embed);
+    }
+
+    [SlashCommand("userinfo", "Get user information")]
+    public async Task UserInfoAsync(InteractionContext ctx)
+    {
+        var user = ctx.User;
+        var member = ctx.Member;
+
+        await ctx.RespondAsync($"Hello {user?.Username}! You joined this server on {member?.Joined_At}");
+    }
 }
 
 var bot = DiscordBot.NewBuilder()
     .WithToken(Environment.GetEnvironmentVariable("DISCORD_TOKEN")!)
-    .WithIntents(DiscordIntents.Guilds)
+    .WithIntents(DiscordIntents.Guilds | DiscordIntents.GuildMessages)
     .Build();
 
 await bot.StartAsync();
@@ -52,10 +68,12 @@ await Task.Delay(Timeout.Infinite);
 
 - [Installation](./wiki/Installation.md) - Get started with NuGet or source reference
 - [Getting Started](./wiki/Getting-Started.md) - Your first bot in minutes
+- [Beginner's Guide](./wiki/Beginners-Guide.md) - **NEW!** Step-by-step guide for Discord bot beginners
 - [Configuration](./wiki/Configuration.md) - Builder patterns, DI, intents
 - [Commands](./wiki/Commands.md) - Slash commands, components, modals
+- [Working with Entities](./wiki/Entities.md) - **NEW!** Channels, guilds, members, messages, and roles
 - [Events](./wiki/Events.md) - Gateway events and logging
-- [Sharding](./wiki/Sharding.md) - **NEW!** Horizontal scaling with distributed sharding
+- [Sharding](./wiki/Sharding.md) - Horizontal scaling with distributed sharding
 - [API Reference](./wiki/API-Reference.md) - Complete API documentation
 - [Rate Limit Monitoring](./wiki/Rate-Limit-Monitoring.md) - Advanced monitoring and analytics
 - [FAQ](./wiki/FAQ.md) - Common questions and troubleshooting
@@ -93,6 +111,17 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTI
 **Ready to build your Discord bot?** Head to the [Wiki](./wiki) to get started!
 
 ## Version History
+
+### v1.5.0 - Entity-First Architecture & Rich API (2025-12-20)
+- ✅ **Removed WithGuild wrappers** - All entities (Channel, Member, Role, User) now have direct Guild/Guilds properties
+- ✅ **Rich entity methods** - Entities can perform operations on themselves (channel.SendMessageAsync, member.AddRoleAsync, message.PinAsync)
+- ✅ **Enhanced channel management** - SetTopicAsync, SetNameAsync, SetNsfwAsync, SetBitrateAsync, SetUserLimitAsync, SetSlowmodeAsync
+- ✅ **Message operations return entities** - All SendMessageAsync/SendDMAsync methods return DiscordMessage for chaining
+- ✅ **Guild channel creation** - CreateChannelAsync and CreateCategoryAsync directly on DiscordGuild
+- ✅ **DM channel caching** - DM channels are now cached in EntityCache for performance
+- ✅ **Type consistency** - Author.Id changed from string to ulong, InteractionContext.User now returns DiscordUser
+- ✅ **Optional parameters** - RespondAsync content parameter defaults to empty string for embed-only responses
+- 📖 **Comprehensive documentation** - New Beginners-Guide.md and Entities.md wiki pages with detailed examples
 
 ### v1.4.0 - Enhanced InteractionContext & Security (2025-12-19)
 - ✅ **Member and Guild objects in InteractionContext** - Direct access to member/guild without cache lookups

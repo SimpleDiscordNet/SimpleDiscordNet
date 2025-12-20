@@ -1,9 +1,11 @@
-# Welcome to SimpleDiscordDotNet v1.4.0
+# Welcome to SimpleDiscordDotNet v1.5.0
 
 A lightweight, dependency-free Discord bot SDK for .NET 10 that provides direct access to Discord API v10 (REST + Gateway).
 
 ## 🚀 Quick Links
 
+- **[Beginner's Guide](Beginners-Guide)** **⭐ NEW** - Complete guide for Discord bot beginners
+- **[Working with Entities](Entities)** **⭐ NEW** - Comprehensive guide to channels, guilds, members, and more
 - **[Getting Started](Getting-Started)** - Build your first bot in minutes
 - **[Installation](Installation)** - NuGet and source reference setup
 - **[Examples](Examples)** - Easy-to-follow examples for beginners
@@ -133,45 +135,71 @@ SimpleDiscordDotNet is designed with these principles:
 5. **AOT Ready** - Compatible with Native AOT compilation with 100% zero reflection
 6. **Well Documented** - Every public method has XML docs with examples
 
-## 🆕 What's New in v1.4.0
+## 🆕 What's New in v1.5.0
 
-### Enhanced InteractionContext
-All interactive contexts now contain **Member** and **Guild** objects directly, eliminating the need for cache lookups:
-
-```csharp
-[SlashCommand("info", "Get info about your context")]
-public async Task InfoAsync(InteractionContext ctx)
-{
-    // Direct access - no cache lookups needed!
-    DiscordMember? member = ctx.Member; // DiscordMember object
-    DiscordGuild? guild = ctx.Guild;    // DiscordGuild object
-    DiscordChannel? channel = ctx.Channel; // Still available from cache
-
-    await ctx.RespondAsync($"You: {member?.User.Username}, Guild: {guild?.Name}");
-}
-```
-
-### HTTPS-Secured Sharding
-Distributed sharding now uses HTTPS with TLS 1.3+ for secure coordinator/worker communication:
+### Entity-First Architecture
+All WithGuild wrapper classes have been removed. Entities now have direct Guild/Guilds properties:
 
 ```csharp
-// Coordinator with HTTPS (default port changed to 8443)
-DiscordBot coordinator = DiscordBot.NewBuilder()
-    .WithToken(token)
-    .WithSharding(ShardMode.Distributed, workerListenUrl: "https://+:8443/")
-    .Build();
+// Entities have direct guild references
+var channel = DiscordContext.GetChannel(channelId);
+var guild = channel.Guild; // Direct property access!
+
+var user = DiscordContext.Users.First();
+var mutualGuilds = user.Guilds; // Array of all shared guilds
 ```
 
-**Important:** For production deployments, configure SSL certificates or use a TLS-terminating reverse proxy (nginx, Caddy, etc.).
+### Rich Entity Methods
+Entities can now perform operations on themselves:
 
-### 100% Zero Reflection
-All anonymous objects have been replaced with strongly-typed classes for complete AoT compatibility:
-- `MessagePayload` for message building
-- `BulkDeleteMessagesRequest` for bulk operations
-- `BanMemberRequest` for moderation
-- `HttpErrorResponse` for error handling
+```csharp
+// Channel operations
+await channel.SendMessageAsync("Hello!");
+await channel.SetTopicAsync("Welcome to our channel");
+await channel.SetSlowmodeAsync(5); // 5 second slowmode
+await channel.DeleteAsync();
 
-All payloads are registered in `DiscordJsonContext` for source-generated JSON serialization.
+// Member operations
+await member.AddRoleAsync(roleId);
+await member.RemoveRoleAsync(roleId);
+
+// Message operations
+var message = await channel.SendMessageAsync("Important!");
+await message.PinAsync();
+await message.DeleteAsync();
+
+// User operations
+await user.SendDMAsync("Private message");
+
+// Guild operations
+var newChannel = await guild.CreateChannelAsync("general", ChannelType.GuildText);
+var category = await guild.CreateCategoryAsync("General");
+```
+
+### Message Operations Return Entities
+All send methods now return the sent DiscordMessage for chaining:
+
+```csharp
+// Send and immediately pin
+var message = await channel.SendMessageAsync("Important announcement!");
+await message.PinAsync();
+
+// Send DM and get the message back
+var dmMessage = await user.SendDMAsync("Hello!");
+Console.WriteLine($"Sent message ID: {dmMessage?.Id}");
+```
+
+### Enhanced Channel Management
+Channels have comprehensive setter methods:
+
+```csharp
+await channel.SetNameAsync("new-name");
+await channel.SetTopicAsync("Channel description");
+await channel.SetNsfwAsync(true);
+await channel.SetSlowmodeAsync(10);
+await voiceChannel.SetBitrateAsync(96000);
+await voiceChannel.SetUserLimitAsync(10);
+```
 
 ## 🤝 Contributing
 

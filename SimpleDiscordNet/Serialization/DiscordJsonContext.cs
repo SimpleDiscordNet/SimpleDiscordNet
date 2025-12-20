@@ -2,7 +2,6 @@ using System.Text.Json.Serialization;
 using SimpleDiscordNet.Entities;
 using SimpleDiscordNet.Gateway;
 using SimpleDiscordNet.Models;
-using SimpleDiscordNet.Models.Context;
 using SimpleDiscordNet.Models.Requests;
 using SimpleDiscordNet.Primitives;
 using SimpleDiscordNet.Sharding;
@@ -52,10 +51,6 @@ namespace SimpleDiscordNet.Serialization;
 [JsonSerializable(typeof(MentionableSelect))]
 [JsonSerializable(typeof(ChannelSelect))]
 [JsonSerializable(typeof(TextInput))]
-[JsonSerializable(typeof(ChannelWithGuild))]
-[JsonSerializable(typeof(MemberWithGuild))]
-[JsonSerializable(typeof(RoleWithGuild))]
-[JsonSerializable(typeof(UserWithGuild))]
 [JsonSerializable(typeof(GatewayPayload))]
 [JsonSerializable(typeof(Identify))]
 [JsonSerializable(typeof(IdentifyPayload))]

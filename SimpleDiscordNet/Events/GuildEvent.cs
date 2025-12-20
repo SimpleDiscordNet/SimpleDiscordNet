@@ -4,12 +4,14 @@ namespace SimpleDiscordNet.Events;
 
 /// <summary>
 /// Payload for guild-related events.
-/// For guild creation and deletion, only After/Guild is populated.
-/// For guild updates, Before may contain the previous state if available in cache.
+/// Contains point-in-time data captured when the event occurred.
 /// </summary>
 public sealed record GuildEvent
 {
-    /// <summary>The guild entity (for create/delete) or the current state (for updates).</summary>
+    /// <summary>
+    /// The guild entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordGuild Guild { get; init; }
 
     /// <summary>

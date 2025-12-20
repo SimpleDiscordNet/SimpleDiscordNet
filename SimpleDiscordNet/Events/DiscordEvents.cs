@@ -1,4 +1,5 @@
-﻿using SimpleDiscordNet.Logging;
+using SimpleDiscordNet.Logging;
+using SimpleDiscordNet.Models;
 
 namespace SimpleDiscordNet.Events;
 
@@ -46,6 +47,7 @@ public static class DiscordEvents
     public static event EventHandler<ThreadEvent>? ThreadUpdated;
     public static event EventHandler<ThreadEvent>? ThreadDeleted;
 
+    public static event EventHandler<MessageCreateEvent>? MessageCreated;
     public static event EventHandler<MessageUpdateEvent>? MessageUpdated;
     public static event EventHandler<MessageEvent>? MessageDeleted;
     public static event EventHandler<MessageEvent>? MessagesBulkDeleted;
@@ -93,6 +95,7 @@ public static class DiscordEvents
     internal static void RaiseThreadUpdated(object? sender, ThreadEvent e) => ThreadUpdated?.Invoke(sender, e);
     internal static void RaiseThreadDeleted(object? sender, ThreadEvent e) => ThreadDeleted?.Invoke(sender, e);
 
+    internal static void RaiseMessageCreated(object? sender, MessageCreateEvent e) => MessageCreated?.Invoke(sender, e);
     internal static void RaiseMessageUpdated(object? sender, MessageUpdateEvent e) => MessageUpdated?.Invoke(sender, e);
     internal static void RaiseMessageDeleted(object? sender, MessageEvent e) => MessageDeleted?.Invoke(sender, e);
     internal static void RaiseMessagesBulkDeleted(object? sender, MessageEvent e) => MessagesBulkDeleted?.Invoke(sender, e);

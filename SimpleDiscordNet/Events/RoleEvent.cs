@@ -4,15 +4,20 @@ namespace SimpleDiscordNet.Events;
 
 /// <summary>
 /// Payload for role-related events.
-/// For role creation and deletion, only After/Role is populated.
-/// For role updates, Before may contain the previous state if available in cache.
+/// Contains point-in-time data captured when the event occurred.
 /// </summary>
 public sealed record RoleEvent
 {
-    /// <summary>The role entity (for create/delete) or the current state (for updates).</summary>
+    /// <summary>
+    /// The role entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordRole Role { get; init; }
 
-    /// <summary>The guild this role belongs to.</summary>
+    /// <summary>
+    /// The guild entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordGuild Guild { get; init; }
 
     /// <summary>

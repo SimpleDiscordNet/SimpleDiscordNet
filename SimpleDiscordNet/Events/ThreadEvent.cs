@@ -4,15 +4,20 @@ namespace SimpleDiscordNet.Events;
 
 /// <summary>
 /// Payload for thread-related events.
-/// For thread creation and deletion, only After/Thread is populated.
-/// For thread updates, Before may contain the previous state if available in cache.
+/// Contains point-in-time data captured when the event occurred.
 /// </summary>
 public sealed record ThreadEvent
 {
-    /// <summary>The thread (channel) entity (for create/delete) or the current state (for updates).</summary>
+    /// <summary>
+    /// The thread (channel) entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordChannel Thread { get; init; }
 
-    /// <summary>The guild this thread belongs to.</summary>
+    /// <summary>
+    /// The guild entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordGuild Guild { get; init; }
 
     /// <summary>

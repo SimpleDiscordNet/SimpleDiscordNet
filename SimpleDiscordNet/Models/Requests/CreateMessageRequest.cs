@@ -6,4 +6,5 @@ internal sealed class CreateMessageRequest
     public Embed[]? embeds { get; set; }
     public object[]? components { get; set; }
     public object[]? attachments { get; set; }
+    public object? allowed_mentions { get; set; }
 }

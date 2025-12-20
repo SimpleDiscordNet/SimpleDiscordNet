@@ -4,18 +4,26 @@ namespace SimpleDiscordNet.Events;
 
 /// <summary>
 /// Payload for member-related events, including the member, user, and guild.
-/// For member join and leave, only After/Member is populated.
-/// For member updates, Before may contain the previous state if available in cache.
+/// Contains point-in-time data captured when the event occurred.
 /// </summary>
 public sealed record MemberEvent
 {
-    /// <summary>The member entity (for join/leave) or the current state (for updates).</summary>
+    /// <summary>
+    /// The member entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordMember Member { get; init; }
 
-    /// <summary>The user associated with this member.</summary>
+    /// <summary>
+    /// The user entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordUser User { get; init; }
 
-    /// <summary>The guild this member belongs to.</summary>
+    /// <summary>
+    /// The guild entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordGuild Guild { get; init; }
 
     /// <summary>

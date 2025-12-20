@@ -222,6 +222,41 @@ internal sealed class RestClient : IDisposable
         res.Dispose();
     }
 
+    public async Task<T?> PostMultipartAsync<T>(string route, object payload, (string fileName, ReadOnlyMemory<byte> data) file, CancellationToken ct)
+    {
+        // Multipart uploads need special handling - acquire rate limit but don't use SendAsync wrapper
+        using RateLimitHandle handle = await _rateLimiter.AcquireAsync(route, ct).ConfigureAwait(false);
+
+        using MultipartFormDataContent content = new();
+        System.Buffers.ArrayBufferWriter<byte> jsonBuffer = new();
+        using (Utf8JsonWriter writer = new(jsonBuffer))
+        {
+            JsonSerializer.Serialize(writer, payload, _json);
+        }
+        ReadOnlyMemoryContent jsonContent = new(jsonBuffer.WrittenMemory);
+        jsonContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        content.Add(jsonContent, "payload_json");
+
+        ReadOnlyMemoryContent bytesContent = new(file.data);
+        bytesContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        content.Add(bytesContent, "files[0]", file.fileName);
+
+        using HttpRequestMessage req = new(HttpMethod.Post, BaseUrl + route);
+        req.Content = content;
+        HttpResponseMessage res = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+
+        await _rateLimiter.UpdateFromResponseAsync(route, res).ConfigureAwait(false);
+
+        if (!res.IsSuccessStatusCode)
+        {
+            string? body = await TryReadErrorBodyAsync(res, ct).ConfigureAwait(false);
+            _logger.Log(LogLevel.Error, $"HTTP {((int)res.StatusCode)} on POST (multipart) {route}. Body: {body}");
+        }
+        res.EnsureSuccessStatusCode();
+        await using Stream s = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        return await JsonSerializer.DeserializeAsync<T>(s, _json, ct).ConfigureAwait(false);
+    }
+
     // ---- Convenience helpers for interactions & commands ----
 
     public Task<ApplicationInfo?> GetApplicationAsync(CancellationToken ct)

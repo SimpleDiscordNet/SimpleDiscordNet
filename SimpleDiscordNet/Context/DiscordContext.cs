@@ -1,5 +1,4 @@
 using SimpleDiscordNet.Entities;
-using SimpleDiscordNet.Models.Context;
 
 namespace SimpleDiscordNet.Context;
 
@@ -9,64 +8,78 @@ namespace SimpleDiscordNet.Context;
 /// </summary>
 public static class DiscordContext
 {
+    private static IDiscordContextOperations? s_operations;
+    private static DiscordUser? s_botUser;
     private static Func<IReadOnlyList<DiscordGuild>>? s_guildsProvider;
-    private static Func<IReadOnlyList<ChannelWithGuild>>? s_channelsProvider;
-    private static Func<IReadOnlyList<MemberWithGuild>>? s_membersProvider;
-    private static Func<IReadOnlyList<UserWithGuild>>? s_usersProvider;
-    private static Func<IReadOnlyList<RoleWithGuild>>? s_rolesProvider;
+    private static Func<IReadOnlyList<DiscordChannel>>? s_channelsProvider;
+    private static Func<IReadOnlyList<DiscordMember>>? s_membersProvider;
+    private static Func<IReadOnlyList<DiscordUser>>? s_usersProvider;
+    private static Func<IReadOnlyList<DiscordRole>>? s_rolesProvider;
 
     private static readonly DiscordGuild[] s_emptyGuilds = [];
-    private static readonly ChannelWithGuild[] s_emptyChannels = [];
-    private static readonly MemberWithGuild[] s_emptyMembers = [];
-    private static readonly UserWithGuild[] s_emptyUsers = [];
-    private static readonly RoleWithGuild[] s_emptyRoles = [];
+    private static readonly DiscordChannel[] s_emptyChannels = [];
+    private static readonly DiscordMember[] s_emptyMembers = [];
+    private static readonly DiscordUser[] s_emptyUsers = [];
+    private static readonly DiscordRole[] s_emptyRoles = [];
+
+    /// <summary>
+    /// Safe bot operations for messaging and read-only access.
+    /// Does not expose lifecycle or configuration methods.
+    /// </summary>
+    public static IDiscordContextOperations Operations => s_operations ?? throw new InvalidOperationException("DiscordContext has not been initialized. Ensure DiscordBot has been started.");
+
+    /// <summary>
+    /// The bot's own user object. Use this to check if a user/member is the bot itself.
+    /// Example: if (user.Id == DiscordContext.BotUser?.Id) return; // Ignore bot's own messages
+    /// </summary>
+    public static DiscordUser? BotUser => s_botUser;
 
     /// <summary>All guilds known to the bot</summary>
     public static IReadOnlyList<DiscordGuild> Guilds => s_guildsProvider?.Invoke() ?? s_emptyGuilds;
 
-    /// <summary>All channels known to the bot (each enriched with guild context)</summary>
-    public static IReadOnlyList<ChannelWithGuild> Channels => s_channelsProvider?.Invoke() ?? s_emptyChannels;
+    /// <summary>All channels known to the bot (each channel has guild context via the Guild property)</summary>
+    public static IReadOnlyList<DiscordChannel> Channels => s_channelsProvider?.Invoke() ?? s_emptyChannels;
 
-    /// <summary>All members known to the bot (each enriched with guild context)</summary>
-    public static IReadOnlyList<MemberWithGuild> Members => s_membersProvider?.Invoke() ?? s_emptyMembers;
+    /// <summary>All members known to the bot (each member has guild context via the Guild property)</summary>
+    public static IReadOnlyList<DiscordMember> Members => s_membersProvider?.Invoke() ?? s_emptyMembers;
 
-    /// <summary>All users known to the bot (each enriched with guild context)</summary>
-    public static IReadOnlyList<UserWithGuild> Users => s_usersProvider?.Invoke() ?? s_emptyUsers;
+    /// <summary>All distinct users known to the bot (each user has Guilds[] property with all mutual guilds)</summary>
+    public static IReadOnlyList<DiscordUser> Users => s_usersProvider?.Invoke() ?? s_emptyUsers;
 
-    /// <summary>All roles known to the bot (each enriched with guild context)</summary>
-    public static IReadOnlyList<RoleWithGuild> Roles => s_rolesProvider?.Invoke() ?? s_emptyRoles;
+    /// <summary>All roles known to the bot (each role has guild context via the Guild property)</summary>
+    public static IReadOnlyList<DiscordRole> Roles => s_rolesProvider?.Invoke() ?? s_emptyRoles;
 
     /// <summary>All category channels</summary>
-    public static IReadOnlyList<ChannelWithGuild> Categories => Channels.Where(c => c.Channel.IsCategory).ToArray();
+    public static IReadOnlyList<DiscordChannel> Categories => Channels.Where(c => c.IsCategory).ToArray();
 
     /// <summary>All text channels (excludes categories, threads, and voice)</summary>
-    public static IReadOnlyList<ChannelWithGuild> TextChannels => Channels.Where(c => c.Channel.IsTextChannel).ToArray();
+    public static IReadOnlyList<DiscordChannel> TextChannels => Channels.Where(c => c.IsTextChannel).ToArray();
 
     /// <summary>All voice channels</summary>
-    public static IReadOnlyList<ChannelWithGuild> VoiceChannels => Channels.Where(c => c.Channel.IsVoiceChannel).ToArray();
+    public static IReadOnlyList<DiscordChannel> VoiceChannels => Channels.Where(c => c.IsVoiceChannel).ToArray();
 
     /// <summary>All thread channels</summary>
-    public static IReadOnlyList<ChannelWithGuild> Threads => Channels.Where(c => c.Channel.IsThread).ToArray();
+    public static IReadOnlyList<DiscordChannel> Threads => Channels.Where(c => c.IsThread).ToArray();
 
     /// <summary>Get all channels in a specific guild</summary>
-    public static IReadOnlyList<ChannelWithGuild> GetChannelsInGuild(ulong guildId)
-        => Channels.Where(c => c.GuildId == guildId).ToArray();
+    public static IReadOnlyList<DiscordChannel> GetChannelsInGuild(ulong guildId)
+        => Channels.Where(c => c.Guild?.Id == guildId).ToArray();
 
     /// <summary>Get all category channels in a specific guild</summary>
-    public static IReadOnlyList<ChannelWithGuild> GetCategoriesInGuild(ulong guildId)
-        => Channels.Where(c => c.GuildId == guildId && c.Channel.IsCategory).ToArray();
+    public static IReadOnlyList<DiscordChannel> GetCategoriesInGuild(ulong guildId)
+        => Channels.Where(c => c.Guild?.Id == guildId && c.IsCategory).ToArray();
 
     /// <summary>Get all channels within a specific category</summary>
-    public static IReadOnlyList<ChannelWithGuild> GetChannelsInCategory(ulong categoryId)
-        => Channels.Where(c => c.Channel.Parent_Id == categoryId).ToArray();
+    public static IReadOnlyList<DiscordChannel> GetChannelsInCategory(ulong categoryId)
+        => Channels.Where(c => c.Parent_Id == categoryId).ToArray();
 
     /// <summary>Get all members in a specific guild</summary>
-    public static IReadOnlyList<MemberWithGuild> GetMembersInGuild(ulong guildId)
-        => Members.Where(m => m.GuildId == guildId).ToArray();
+    public static IReadOnlyList<DiscordMember> GetMembersInGuild(ulong guildId)
+        => Members.Where(m => m.Guild.Id == guildId).ToArray();
 
     /// <summary>Get all roles in a specific guild</summary>
-    public static IReadOnlyList<RoleWithGuild> GetRolesInGuild(ulong guildId)
-        => Roles.Where(r => r.GuildId == guildId).ToArray();
+    public static IReadOnlyList<DiscordRole> GetRolesInGuild(ulong guildId)
+        => Roles.Where(r => r.Guild.Id == guildId).ToArray();
 
     /// <summary>
     /// If the bot is in exactly one guild, returns that guild. Otherwise returns null.
@@ -93,24 +106,28 @@ public static class DiscordContext
     }
 
     /// <summary>Find a specific channel by ID (ulong)</summary>
-    public static ChannelWithGuild? GetChannel(ulong channelId)
-        => Channels.FirstOrDefault(c => c.Channel.Id == channelId);
+    public static DiscordChannel? GetChannel(ulong channelId)
+        => Channels.FirstOrDefault(c => c.Id == channelId);
 
     /// <summary>Find a specific member by user ID and guild ID</summary>
-    public static MemberWithGuild? GetMember(ulong guildId, ulong userId)
-        => Members.FirstOrDefault(m => m.GuildId == guildId && m.Member.User.Id == userId);
+    public static DiscordMember? GetMember(ulong guildId, ulong userId)
+        => Members.FirstOrDefault(m => m.Guild.Id == guildId && m.User.Id == userId);
 
     /// <summary>Find a specific role by ID</summary>
-    public static RoleWithGuild? GetRole(ulong roleId)
-        => Roles.FirstOrDefault(r => r.Role.Id == roleId);
+    public static DiscordRole? GetRole(ulong roleId)
+        => Roles.FirstOrDefault(r => r.Id == roleId);
 
     internal static void SetProvider(
+        IDiscordBot bot,
+        DiscordUser? botUser,
         Func<IReadOnlyList<DiscordGuild>> guilds,
-        Func<IReadOnlyList<ChannelWithGuild>> channels,
-        Func<IReadOnlyList<MemberWithGuild>> members,
-        Func<IReadOnlyList<UserWithGuild>> users,
-        Func<IReadOnlyList<RoleWithGuild>> roles)
+        Func<IReadOnlyList<DiscordChannel>> channels,
+        Func<IReadOnlyList<DiscordMember>> members,
+        Func<IReadOnlyList<DiscordUser>> users,
+        Func<IReadOnlyList<DiscordRole>> roles)
     {
+        s_operations = new DiscordContextOperations(bot);
+        s_botUser = botUser;
         s_guildsProvider = guilds;
         s_channelsProvider = channels;
         s_membersProvider = members;
@@ -120,6 +137,8 @@ public static class DiscordContext
 
     internal static void ClearProvider()
     {
+        s_operations = null;
+        s_botUser = null;
         s_guildsProvider = null;
         s_channelsProvider = null;
         s_membersProvider = null;

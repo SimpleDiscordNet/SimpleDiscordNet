@@ -4,15 +4,19 @@ namespace SimpleDiscordNet.Events;
 
 /// <summary>
 /// Payload for bot user update events.
-/// Includes before/after state when the bot's user profile is updated.
+/// Contains point-in-time data captured when the event occurred.
 /// </summary>
 public sealed record BotUserEvent
 {
-    /// <summary>The current state of the bot user.</summary>
+    /// <summary>
+    /// The user entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordUser User { get; init; }
 
     /// <summary>
-    /// The previous state of the bot user before the update, if available in cache.
+    /// The previous state of the user before the update, if available in cache.
+    /// Represents a point-in-time view captured before the update occurred.
     /// </summary>
     public DiscordUser? BeforeUpdate { get; init; }
 

@@ -1,33 +1,39 @@
 namespace SimpleDiscordNet.Entities;
 
-public sealed record DiscordUser
+public sealed class DiscordUser
 {
     public required ulong Id { get; init; }
     public required string Username { get; init; }
 
     /// <summary>User's 4-digit discriminator (deprecated by Discord, may be 0 for new usernames)</summary>
-    public ushort Discriminator { get; init; }
+    public ushort Discriminator { get; internal set; }
 
     /// <summary>User's display name (new username system)</summary>
-    public string? Global_Name { get; init; }
+    public string? Global_Name { get; internal set; }
 
     /// <summary>User's avatar hash</summary>
-    public string? Avatar { get; init; }
+    public string? Avatar { get; internal set; }
 
     /// <summary>Whether the user is a bot</summary>
-    public bool? Bot { get; init; }
+    public bool? Bot { get; internal set; }
 
     /// <summary>Whether the user is an Official Discord System user</summary>
-    public bool? System { get; init; }
+    public bool? System { get; internal set; }
 
     /// <summary>User's banner hash</summary>
-    public string? Banner { get; init; }
+    public string? Banner { get; internal set; }
 
     /// <summary>User's banner color (as integer)</summary>
-    public int? Accent_Color { get; init; }
+    public int? Accent_Color { get; internal set; }
 
     /// <summary>User's public flags</summary>
-    public int? Public_Flags { get; init; }
+    public int? Public_Flags { get; internal set; }
+
+    /// <summary>
+    /// All guilds the bot shares with this user. Useful for checking mutual servers.
+    /// Updated when members are cached. Empty array if user not in any cached guilds.
+    /// </summary>
+    public DiscordGuild[] Guilds { get; internal set; } = [];
 
     /// <summary>
     /// Gets the user's avatar URL. Returns null if no custom avatar.
@@ -63,4 +69,23 @@ public sealed record DiscordUser
     public string FullUsername => Discriminator == 0
         ? Username
         : $"{Username}#{Discriminator:D4}"; // Format as 4 digits with leading zeros
+
+    /// <summary>
+    /// Returns true if this user is a bot account.
+    /// </summary>
+    public bool IsBot => Bot == true;
+
+    /// <summary>
+    /// Returns true if this user is the currently running bot (checks against DiscordContext.BotUser).
+    /// Use this to ignore the bot's own messages/events.
+    /// Example: if (user.IsCurrentBot) return; // Ignore self
+    /// </summary>
+    public bool IsCurrentBot => Context.DiscordContext.BotUser?.Id == Id;
+
+    /// <summary>
+    /// Sends a direct message to this user by creating a DM channel and sending a message.
+    /// Example: await user.SendDMAsync("Hello!");
+    /// </summary>
+    public Task<DiscordMessage?> SendDMAsync(string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+        => Context.DiscordContext.Operations.SendDMAsync(Id.ToString(), content, embed, ct);
 }

@@ -46,6 +46,20 @@ public sealed record DiscordMessage
         public const int ContextMenuCommand = 23;
         public const int AutoModerationAction = 24;
     }
+
+    /// <summary>
+    /// Pins this message in its channel.
+    /// Example: await message.PinAsync();
+    /// </summary>
+    public Task PinAsync(CancellationToken ct = default)
+        => Context.DiscordContext.Operations.PinMessageAsync(ChannelId, Id, ct);
+
+    /// <summary>
+    /// Deletes this message.
+    /// Example: await message.DeleteAsync();
+    /// </summary>
+    public Task DeleteAsync(CancellationToken ct = default)
+        => Context.DiscordContext.Operations.DeleteMessageAsync(ChannelId, Id, ct);
 }
 
 /// <summary>

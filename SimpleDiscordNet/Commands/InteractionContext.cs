@@ -18,7 +18,14 @@ public sealed class InteractionContext
     public string ApplicationId { get; }
     public string? GuildId { get; }
     public string? ChannelId { get; }
-    public Author? User { get; }
+
+    /// <summary>
+    /// The user who triggered this interaction.
+    /// For guild interactions, this is Member.User.
+    /// For DM interactions, this is a DiscordUser created from the interaction data.
+    /// </summary>
+    public Entities.DiscordUser? User { get; }
+
     public InteractionType Type { get; }
 
     /// <summary>
@@ -36,7 +43,7 @@ public sealed class InteractionContext
     /// <summary>
     /// The channel entity if available in cache.
     /// </summary>
-    public Entities.DiscordChannel? Channel => ChannelId is not null ? Context.DiscordContext.GetChannel(ulong.Parse(ChannelId))?.Channel : null;
+    public Entities.DiscordChannel? Channel => ChannelId is not null ? Context.DiscordContext.GetChannel(ulong.Parse(ChannelId)) : null;
 
     /// <summary>
     /// The shard ID that received this interaction (0-based).
@@ -73,7 +80,15 @@ public sealed class InteractionContext
         ApplicationId = evt.ApplicationId;
         GuildId = evt.GuildId;
         ChannelId = evt.ChannelId;
-        User = evt.Author;
+
+        // For guild interactions, use Member.User; for DM interactions, create DiscordUser from Author
+        User = evt.Member?.User ?? (evt.Author != null ? new Entities.DiscordUser
+        {
+            Id = evt.Author.Id,
+            Username = evt.Author.Username,
+            Guilds = []
+        } : null);
+
         Type = evt.Type;
     }
 
@@ -103,10 +118,12 @@ public sealed class InteractionContext
     }
 
     /// <summary>
-    /// Sends an immediate response to the interaction with just text.
+    /// Sends an immediate response to the interaction with text and/or embed.
+    /// For complex responses with components, use RespondAsync(MessageBuilder) instead.
     /// Example: await ctx.RespondAsync("Hello, world!");
+    /// Example: await ctx.RespondAsync(embed: myEmbed); // Embed only, no text
     /// </summary>
-    public Task RespondAsync(string content, EmbedBuilder? embed = null, bool ephemeral = false, CancellationToken ct = default)
+    public Task RespondAsync(string content = "", EmbedBuilder? embed = null, bool ephemeral = false, CancellationToken ct = default)
     {
         // If we already deferred the interaction, Discord requires using the follow-up webhook endpoint
         if (_deferred || _deferredUpdate)
@@ -121,34 +138,6 @@ public sealed class InteractionContext
             flags = ephemeral ? 1 << 6 : null // EPHEMERAL flag
         };
         InteractionResponse resp = new() { type = 4, data = data }; // CHANNEL_MESSAGE_WITH_SOURCE
-        return _rest.PostInteractionCallbackAsync(InteractionId, InteractionToken, resp, ct);
-    }
-
-    /// <summary>
-    /// Sends an immediate response with components (buttons/selects). If already deferred, uses a follow-up.
-    /// </summary>
-    public Task RespondAsync(string content, IEnumerable<IComponent> components, EmbedBuilder? embed = null, bool ephemeral = false, CancellationToken ct = default)
-    {
-        if (_deferred || _deferredUpdate)
-        {
-            WebhookMessageRequest payload = new()
-            {
-                content = content,
-                embeds = embed is null ? null : [embed.Build()],
-                flags = ephemeral ? 1 << 6 : null,
-                components = [new ActionRow(components.Cast<object>().ToArray())]
-            };
-            return _rest.PostWebhookFollowupAsync(ApplicationId, InteractionToken, payload, ct);
-        }
-
-        InteractionResponseData data = new()
-        {
-            content = content,
-            embeds = embed is null ? null : [embed.Build()],
-            flags = ephemeral ? 1 << 6 : null,
-            components = [new ActionRow(components.Cast<object>().ToArray())]
-        };
-        InteractionResponse resp = new() { type = 4, data = data };
         return _rest.PostInteractionCallbackAsync(InteractionId, InteractionToken, resp, ct);
     }
 
@@ -183,8 +172,10 @@ public sealed class InteractionContext
 
     /// <summary>
     /// Sends a follow-up message for a previously deferred interaction.
+    /// Example: await ctx.FollowupAsync("Here's more info");
+    /// Example: await ctx.FollowupAsync(embed: myEmbed); // Embed only, no text
     /// </summary>
-    public Task FollowupAsync(string content, EmbedBuilder? embed = null, bool ephemeral = false, CancellationToken ct = default)
+    public Task FollowupAsync(string content = "", EmbedBuilder? embed = null, bool ephemeral = false, CancellationToken ct = default)
     {
         WebhookMessageRequest payload = new()
         {
@@ -265,15 +256,17 @@ public sealed class InteractionContext
     /// <summary>
     /// Sends an ephemeral (only visible to user) response.
     /// Example: await ctx.ReplyEphemeralAsync("This is private!");
+    /// Example: await ctx.ReplyEphemeralAsync(embed: myEmbed); // Embed only, no text
     /// </summary>
-    public Task ReplyEphemeralAsync(string content, EmbedBuilder? embed = null, CancellationToken ct = default)
+    public Task ReplyEphemeralAsync(string content = "", EmbedBuilder? embed = null, CancellationToken ct = default)
         => RespondAsync(content, embed, ephemeral: true, ct);
 
     /// <summary>
     /// Sends a response with an embed.
     /// Example: await ctx.ReplyWithEmbedAsync("Check this out", new EmbedBuilder().WithTitle("Cool Embed"));
+    /// Example: await ctx.ReplyWithEmbedAsync(embed: myEmbed); // Embed only, no text
     /// </summary>
-    public Task ReplyWithEmbedAsync(string content, EmbedBuilder embed, bool ephemeral = false, CancellationToken ct = default)
+    public Task ReplyWithEmbedAsync(string content = "", EmbedBuilder? embed = null, bool ephemeral = false, CancellationToken ct = default)
         => RespondAsync(content, embed, ephemeral, ct);
 
     /// <summary>
@@ -281,7 +274,7 @@ public sealed class InteractionContext
     /// Example: await ctx.ReplyWithButtonsAsync("Choose:", new Button ("Yes", "yes_id"), new Button("No", "no_id"));
     /// </summary>
     public Task ReplyWithButtonsAsync(string content, params Button[] buttons)
-        => RespondAsync(content, buttons, null, false, CancellationToken.None);
+        => RespondAsync(new MessageBuilder().WithContent(content).WithComponents(buttons));
 
     /// <summary>
     /// Gets an option value as a string from a slash command.
@@ -350,9 +343,9 @@ public sealed class InteractionContext
 
     /// <summary>
     /// Gets the user's ID who triggered this interaction.
-    /// Example: string userId = ctx.UserId;
+    /// Example: ulong userId = ctx.UserId;
     /// </summary>
-    public string UserId => User?.Id ?? string.Empty;
+    public ulong UserId => User?.Id ?? 0;
 
     /// <summary>
     /// Gets the username who triggered this interaction.

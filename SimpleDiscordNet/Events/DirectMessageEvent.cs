@@ -9,6 +9,6 @@ namespace SimpleDiscordNet.Events;
 /// </summary>
 public sealed class DirectMessageEvent
 {
-    public required MessageCreateEvent Message { get; init; }
+    public required MessageCreateEventRaw Message { get; init; }
     public required CommandContext Context { get; init; }
 }

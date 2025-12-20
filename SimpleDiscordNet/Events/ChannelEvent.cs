@@ -4,15 +4,20 @@ namespace SimpleDiscordNet.Events;
 
 /// <summary>
 /// Payload for channel-related events, including the channel and its guild.
-/// For channel creation and deletion, only After/Channel is populated.
-/// For channel updates, Before may contain the previous state if available in cache.
+/// Contains point-in-time data captured when the event occurred.
 /// </summary>
 public sealed record ChannelEvent
 {
-    /// <summary>The channel entity (for create/delete) or the current state (for updates).</summary>
+    /// <summary>
+    /// The channel entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordChannel Channel { get; init; }
 
-    /// <summary>The guild this channel belongs to.</summary>
+    /// <summary>
+    /// The guild entity from cache at the time of the event.
+    /// Represents a point-in-time view captured when the event occurred.
+    /// </summary>
     public required DiscordGuild Guild { get; init; }
 
     /// <summary>

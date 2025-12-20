@@ -36,14 +36,17 @@ internal sealed partial class GatewayClient
         try
         {
             if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
+            ulong guildId = gidProp.GetUInt64();
             DiscordUser user = ParseUser(data.GetProperty("user"));
             ulong[] roles = data.TryGetProperty("roles", out JsonElement r) && r.ValueKind == JsonValueKind.Array
                 ? r.EnumerateArray().Select(static x => x.GetUInt64()).ToArray()
                 : [];
             string? nick = data.TryGetProperty("nick", out JsonElement n) && n.ValueKind != JsonValueKind.Null ? n.GetString() : null;
 
-            DiscordMember member = new() { User = user, Nick = nick, Roles = roles };
-            evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetUInt64(), Member = member });
+            // Create placeholder guild (will be replaced with actual guild in cache)
+            DiscordGuild guild = new() { Id = guildId, Name = string.Empty };
+            DiscordMember member = new() { User = user, Guild = guild, Nick = nick, Roles = roles };
+            evt?.Invoke(this, new GatewayMemberEvent { GuildId = guildId, Member = member });
         }
         catch (Exception ex) { Error?.Invoke(this, ex); }
     }
@@ -53,9 +56,12 @@ internal sealed partial class GatewayClient
         try
         {
             if (!data.TryGetProperty("guild_id", out JsonElement gidProp)) return;
+            ulong guildId = gidProp.GetUInt64();
             DiscordUser user = ParseUser(data.GetProperty("user"));
-            DiscordMember member = new() { User = user, Nick = null, Roles = [] };
-            evt?.Invoke(this, new GatewayMemberEvent { GuildId = gidProp.GetUInt64(), Member = member });
+            // Create placeholder guild (member is being removed anyway)
+            DiscordGuild guild = new() { Id = guildId, Name = string.Empty };
+            DiscordMember member = new() { User = user, Guild = guild, Nick = null, Roles = [] };
+            evt?.Invoke(this, new GatewayMemberEvent { GuildId = guildId, Member = member });
         }
         catch (Exception ex) { Error?.Invoke(this, ex); }
     }
@@ -79,10 +85,14 @@ internal sealed partial class GatewayClient
             ulong guildId = gidProp.GetUInt64();
             JsonElement roleData = data.GetProperty("role");
 
+            // Create placeholder guild (will be replaced with actual guild in cache)
+            DiscordGuild guild = new() { Id = guildId, Name = string.Empty };
+
             DiscordRole role = new()
             {
                 Id = roleData.GetProperty("id").GetUInt64(),
                 Name = roleData.GetProperty("name").GetString() ?? string.Empty,
+                Guild = guild,
                 Color = roleData.TryGetProperty("color", out JsonElement c) ? c.GetInt32() : 0,
                 Position = roleData.TryGetProperty("position", out JsonElement p) ? p.GetInt32() : 0,
                 Permissions = roleData.TryGetProperty("permissions", out JsonElement perms) ? perms.GetUInt64() : 0UL
@@ -100,10 +110,14 @@ internal sealed partial class GatewayClient
             ulong guildId = gidProp.GetUInt64();
             ulong roleId = data.GetProperty("role_id").GetUInt64();
 
+            // Create placeholder guild (role is being deleted anyway)
+            DiscordGuild guild = new() { Id = guildId, Name = string.Empty };
+
             DiscordRole role = new()
             {
                 Id = roleId,
-                Name = string.Empty
+                Name = string.Empty,
+                Guild = guild
             };
             evt?.Invoke(this, new GatewayRoleEvent { GuildId = guildId, Role = role });
         }
