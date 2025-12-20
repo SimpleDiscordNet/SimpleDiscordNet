@@ -6,6 +6,10 @@ SimpleDiscordNet provides strongly-typed entity classes for all Discord objects.
 
 - [Accessing Entities](#accessing-entities)
 - [Channels](#channels)
+  - [Sending Messages](#sending-messages)
+  - [Modifying Channels](#modifying-channels)
+  - [Managing Channel Permissions](#managing-channel-permissions-v143)
+  - [Deleting Channels](#deleting-channels)
 - [Guilds](#guilds)
 - [Members](#members)
 - [Messages](#messages)
@@ -109,6 +113,133 @@ await channel.MoveAsync(position: 5);
 // Voice channel settings
 await voiceChannel.SetBitrateAsync(96000); // 96 kbps
 await voiceChannel.SetUserLimitAsync(10); // Max 10 users
+```
+
+### Managing Channel Permissions (v1.4.3+)
+
+SimpleDiscordNet provides three ways to manage channel permissions, depending on what objects you have available:
+
+#### 1. Channel-Centric API
+Use these methods when you have a channel and want to modify permissions by ID:
+
+```csharp
+// Add a single permission for a role
+await channel.AddPermissionAsync(roleId, PermissionFlags.AttachFiles);
+
+// Add a permission for a specific member
+await channel.AddPermissionAsync(userId, PermissionFlags.AttachFiles, isRole: false);
+
+// Remove a permission (resets to inherited/default)
+await channel.RemovePermissionAsync(roleId, PermissionFlags.AttachFiles);
+
+// Deny a permission (explicit deny overrides allows)
+await channel.DenyPermissionAsync(roleId, PermissionFlags.SendMessages);
+
+// Set multiple permissions with bitwise OR
+await channel.ModifyPermissionsAsync(roleId,
+    allow: PermissionFlags.SendMessages |
+           PermissionFlags.ViewChannel |
+           PermissionFlags.AttachFiles |
+           PermissionFlags.EmbedLinks);
+
+// Delete all permission overwrites for a target
+await channel.DeletePermissionOverwriteAsync(roleId);
+```
+
+#### 2. Role-Centric API
+Use these methods when you have a `DiscordRole` object:
+
+```csharp
+// Add permission for this role
+await role.AddChannelPermissionAsync(channel, PermissionFlags.AttachFiles);
+
+// Remove permission
+await role.RemoveChannelPermissionAsync(channel, PermissionFlags.AttachFiles);
+
+// Deny permission
+await role.DenyChannelPermissionAsync(channel, PermissionFlags.SendMessages);
+
+// Set multiple permissions at once
+await role.ModifyChannelPermissionsAsync(channel,
+    allow: PermissionFlags.SendMessages | PermissionFlags.ViewChannel,
+    deny: PermissionFlags.MentionEveryone);
+
+// Delete all overwrites for this role
+await role.DeleteChannelPermissionOverwriteAsync(channel);
+```
+
+#### 3. Member-Centric API
+Use these methods when you have a `DiscordMember` object:
+
+```csharp
+// Add permission for this member
+await member.AddChannelPermissionAsync(channel, PermissionFlags.AttachFiles);
+
+// Remove permission
+await member.RemoveChannelPermissionAsync(channel, PermissionFlags.AttachFiles);
+
+// Deny permission (overrides role-based allows)
+await member.DenyChannelPermissionAsync(channel, PermissionFlags.SendMessages);
+
+// Set multiple permissions
+await member.ModifyChannelPermissionsAsync(channel,
+    allow: PermissionFlags.SendMessages | PermissionFlags.ViewChannel);
+
+// Delete all overwrites for this member
+await member.DeleteChannelPermissionOverwriteAsync(channel);
+```
+
+#### Reading Current Permissions
+
+```csharp
+// Get permission overwrite for a specific role or member
+var overwrite = channel.GetOverwrite(roleId);
+if (overwrite != null)
+{
+    // Check if specific permission is allowed
+    if (overwrite.HasAllow(PermissionFlags.SendMessages))
+        Console.WriteLine("Send messages is allowed");
+
+    // Check if specific permission is denied
+    if (overwrite.HasDeny(PermissionFlags.SendMessages))
+        Console.WriteLine("Send messages is denied");
+}
+
+// Get all role overwrites
+foreach (var roleOverwrite in channel.GetRoleOverwrites())
+{
+    Console.WriteLine($"Role {roleOverwrite.Id}: Allow={roleOverwrite.Allow}, Deny={roleOverwrite.Deny}");
+}
+
+// Get all member overwrites
+foreach (var memberOverwrite in channel.GetMemberOverwrites())
+{
+    Console.WriteLine($"Member {memberOverwrite.Id}: Allow={memberOverwrite.Allow}, Deny={memberOverwrite.Deny}");
+}
+```
+
+#### Common Permission Patterns
+
+```csharp
+// Read-only channel for @everyone
+await channel.ModifyPermissionsAsync(everyoneRoleId,
+    deny: PermissionFlags.SendMessages);
+
+// Private channel visible only to specific role
+await channel.ModifyPermissionsAsync(everyoneRoleId,
+    deny: PermissionFlags.ViewChannel);
+await channel.ModifyPermissionsAsync(privateRoleId,
+    allow: PermissionFlags.ViewChannel | PermissionFlags.SendMessages);
+
+// Mute a specific user in a channel
+await member.DenyChannelPermissionAsync(channel, PermissionFlags.SendMessages);
+
+// Grant admin-like permissions in a channel
+await role.ModifyChannelPermissionsAsync(channel,
+    allow: PermissionFlags.ViewChannel |
+           PermissionFlags.SendMessages |
+           PermissionFlags.ManageMessages |
+           PermissionFlags.ManageChannels);
 ```
 
 ### Deleting Channels

@@ -70,9 +70,10 @@ public class AdminCommands
 
 ## Command Parameters
 
-Commands support automatic parameter binding using the `[CommandOption]` attribute:
+Commands support automatic parameter binding. The `[CommandOption]` attribute is **optional** (added in v1.4.3) but recommended for customization:
 
 ```csharp
+// With [CommandOption] - recommended for custom descriptions and constraints
 [SlashCommand("profile", "Update your profile")]
 public async Task ProfileAsync(
     InteractionContext ctx,
@@ -83,17 +84,26 @@ public async Task ProfileAsync(
 {
     await ctx.RespondAsync($"Profile updated: {name}, {age} years old");
 }
+
+// Without [CommandOption] - parameters auto-detected from method signature (v1.4.3+)
+[SlashCommand("ban", "Ban a user")]
+public async Task BanAsync(InteractionContext ctx, ulong userId, string reason)
+{
+    await ctx.RespondAsync($"Banned user {userId}: {reason}");
+}
 ```
 
 ### Supported Parameter Types
 
 - `string` - Text input
-- `int`, `long` - Integer numbers
+- `int`, `long`, `ulong` - Integer numbers (ulong support added in v1.4.3)
 - `double`, `float` - Decimal numbers
 - `bool` - True/false
 - `User` - Discord user (resolved from cache)
 - `Channel` - Discord channel (resolved from cache)
 - `Role` - Discord role (resolved from cache)
+
+**Note:** When using `ulong` for Discord IDs (user IDs, role IDs, etc.), the source generator automatically maps them to Discord's integer type.
 
 ### Parameter Constraints
 

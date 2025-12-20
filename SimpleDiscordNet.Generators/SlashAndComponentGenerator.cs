@@ -136,24 +136,25 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
                     return name == CommandOptionAttr;
                 });
 
+                // Support parameters with or without [CommandOption] for backward compatibility
+                string? optionName = null;
+                string? description = null;
+                bool? explicitRequired = null;
+                int? minLength = null;
+                int? maxLength = null;
+                double? minValue = null;
+                double? maxValue = null;
+                string? channelTypes = null;
+                string? choices = null;
+                bool autocomplete = false;
+
                 if (optAttr is not null)
                 {
-                    string? optionName = optAttr.ConstructorArguments.Length >= 1 ? optAttr.ConstructorArguments[0].Value as string : null;
-                    string? description = optAttr.ConstructorArguments.Length >= 2 ? optAttr.ConstructorArguments[1].Value as string : null;
-
-                    if (string.IsNullOrWhiteSpace(optionName)) optionName = param.Name;
-                    if (string.IsNullOrWhiteSpace(description)) description = "option";
+                    // Parse attribute values
+                    optionName = optAttr.ConstructorArguments.Length >= 1 ? optAttr.ConstructorArguments[0].Value as string : null;
+                    description = optAttr.ConstructorArguments.Length >= 2 ? optAttr.ConstructorArguments[1].Value as string : null;
 
                     // Parse all named arguments from attribute
-                    bool? explicitRequired = null;
-                    int? minLength = null;
-                    int? maxLength = null;
-                    double? minValue = null;
-                    double? maxValue = null;
-                    string? channelTypes = null;
-                    string? choices = null;
-                    bool autocomplete = false;
-
                     foreach (var namedArg in optAttr.NamedArguments)
                     {
                         switch (namedArg.Key)
@@ -185,79 +186,86 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
                         }
                     }
 
-                    // Parse CommandChoice attributes (takes precedence over Choices property)
-                    var choiceAttrs = param.GetAttributes().Where(a =>
-                    {
-                        var name = a.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).TrimStart('g', 'l', 'o', 'b', 'a', 'l', ':');
-                        return name == CommandChoiceAttr;
-                    }).ToList();
+                }
 
-                    if (choiceAttrs.Count > 0)
+                // Parse CommandChoice attributes (takes precedence over Choices property)
+                var choiceAttrs = param.GetAttributes().Where(a =>
+                {
+                    var name = a.AttributeClass?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).TrimStart('g', 'l', 'o', 'b', 'a', 'l', ':');
+                    return name == CommandChoiceAttr;
+                }).ToList();
+
+                if (choiceAttrs.Count > 0)
+                {
+                    // Build choices string from CommandChoice attributes
+                    var choiceList = new List<string>();
+                    foreach (var choiceAttr in choiceAttrs)
                     {
-                        // Build choices string from CommandChoice attributes
-                        var choiceList = new List<string>();
-                        foreach (var choiceAttr in choiceAttrs)
+                        if (choiceAttr.ConstructorArguments.Length >= 2)
                         {
-                            if (choiceAttr.ConstructorArguments.Length >= 2)
+                            string? displayName = choiceAttr.ConstructorArguments[0].Value as string;
+                            object? value = choiceAttr.ConstructorArguments[1].Value;
+                            if (!string.IsNullOrWhiteSpace(displayName) && value != null)
                             {
-                                string? displayName = choiceAttr.ConstructorArguments[0].Value as string;
-                                object? value = choiceAttr.ConstructorArguments[1].Value;
-                                if (!string.IsNullOrWhiteSpace(displayName) && value != null)
-                                {
-                                    choiceList.Add($"{displayName}:{value}");
-                                }
+                                choiceList.Add($"{displayName}:{value}");
                             }
                         }
-                        if (choiceList.Count > 0)
-                        {
-                            choices = string.Join(",", choiceList);
-                        }
                     }
-
-                    var paramType = param.Type;
-                    bool isNullable = paramType.NullableAnnotation == NullableAnnotation.Annotated;
-                    string typeName = paramType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat).TrimEnd('?');
-
-                    // Map C# types to Discord option types - support primitives and entity types
-                    string discordType = typeName switch
+                    if (choiceList.Count > 0)
                     {
-                        "string" => "string",
-                        "long" => "long",
-                        "int" => "int",
-                        "bool" => "bool",
-                        "double" => "double",
-                        "float" => "float",
-                        "User" => "User",
-                        "Channel" => "Channel",
-                        "Role" => "Role",
-                        _ => typeName.EndsWith(".User") ? "User" :
-                             typeName.EndsWith(".Channel") ? "Channel" :
-                             typeName.EndsWith(".Role") ? "Role" : "unknown"
-                    };
-
-                    if (discordType == "unknown") continue; // Skip unsupported types
-
-                    bool isRequired = explicitRequired ?? (!isNullable && !param.HasExplicitDefaultValue);
-                    string? defaultValue = param.HasExplicitDefaultValue ? (param.ExplicitDefaultValue?.ToString() ?? "null") : null;
-
-                    options.Add(new OptionParameter
-                    {
-                        ParameterName = param.Name,
-                        OptionName = optionName!,
-                        Description = description!,
-                        TypeName = discordType,
-                        IsNullable = isNullable,
-                        IsRequired = isRequired,
-                        DefaultValue = defaultValue,
-                        MinLength = minLength,
-                        MaxLength = maxLength,
-                        MinValue = minValue,
-                        MaxValue = maxValue,
-                        ChannelTypes = channelTypes,
-                        Choices = choices,
-                        Autocomplete = autocomplete
-                    });
+                        choices = string.Join(",", choiceList);
+                    }
                 }
+
+                // Set defaults for parameters without [CommandOption] attribute
+                if (string.IsNullOrWhiteSpace(optionName)) optionName = param.Name;
+                if (string.IsNullOrWhiteSpace(description)) description = "option";
+
+                var paramType = param.Type;
+                bool isNullable = paramType.NullableAnnotation == NullableAnnotation.Annotated;
+                string typeName = paramType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat).TrimEnd('?');
+
+                // Map C# types to Discord option types - support primitives and entity types
+                string discordType = typeName switch
+                {
+                    "string" => "string",
+                    "long" => "long",
+                    "ulong" => "long", // Discord uses long (i64) for all integers
+                    "int" => "int",
+                    "bool" => "bool",
+                    "double" => "double",
+                    "float" => "float",
+                    "User" => "User",
+                    "Channel" => "Channel",
+                    "Role" => "Role",
+                    _ => typeName.EndsWith(".User") ? "User" :
+                         typeName.EndsWith(".Channel") ? "Channel" :
+                         typeName.EndsWith(".Role") ? "Role" : "unknown"
+                };
+
+                if (discordType == "unknown") continue; // Skip unsupported types
+
+                bool isRequired = explicitRequired ?? (!isNullable && !param.HasExplicitDefaultValue);
+                string? defaultValue = param.HasExplicitDefaultValue ? (param.ExplicitDefaultValue?.ToString() ?? "null") : null;
+
+                options.Add(new OptionParameter
+                {
+                    ParameterName = param.Name,
+                    OptionName = optionName!,
+                    Description = description!,
+                    TypeName = discordType,
+                    ActualTypeName = typeName, // Store the actual C# type (e.g., "ulong")
+                    IsNullable = isNullable,
+                    IsRequired = isRequired,
+                    DefaultValue = defaultValue,
+                    MinLength = minLength,
+                    MaxLength = maxLength,
+                    MinValue = minValue,
+                    MaxValue = maxValue,
+                    ChannelTypes = channelTypes,
+                    Choices = choices,
+                    Autocomplete = autocomplete
+                });
             }
         }
 
@@ -389,7 +397,7 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
 
             if (c.Options.Count > 0)
             {
-                bindingCode.Append("var _opts = ctx.Command?.Options ?? System.Array.Empty<global::SimpleDiscordNet.Models.InteractionOption>(); ");
+                bindingCode.Append("var _opts = ctx.Command?.Options ?? (global::System.Collections.Generic.IReadOnlyList<global::SimpleDiscordNet.Models.InteractionOption>)System.Array.Empty<global::SimpleDiscordNet.Models.InteractionOption>(); ");
 
                 foreach (var opt in c.Options)
                 {
@@ -403,10 +411,11 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
                     if (opt.IsNullable)
                     {
                         // Nullable types - return nullable values
-                        extraction = opt.TypeName switch
+                        extraction = opt.ActualTypeName switch
                         {
                             "string" => $"FindOption(_opts, \"{normalizedName}\")?.String",
                             "long" => $"FindOption(_opts, \"{normalizedName}\")?.Integer",
+                            "ulong" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _ulongVal_{opt.ParameterName} ? (ulong)_ulongVal_{opt.ParameterName} : (ulong?)null",
                             "int" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _intVal_{opt.ParameterName} ? (int)_intVal_{opt.ParameterName} : (int?)null",
                             "bool" => $"FindOption(_opts, \"{normalizedName}\")?.Boolean",
                             "double" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _doubleVal_{opt.ParameterName} ? (double)_doubleVal_{opt.ParameterName} : (double?)null",
@@ -420,10 +429,11 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
                     else
                     {
                         // Non-nullable types - provide defaults for value types
-                        extraction = opt.TypeName switch
+                        extraction = opt.ActualTypeName switch
                         {
                             "string" => $"FindOption(_opts, \"{normalizedName}\")?.String",
                             "long" => $"FindOption(_opts, \"{normalizedName}\")?.Integer ?? 0L",
+                            "ulong" => $"(ulong)(FindOption(_opts, \"{normalizedName}\")?.Integer ?? 0L)",
                             "int" => $"(int)(FindOption(_opts, \"{normalizedName}\")?.Integer ?? 0L)",
                             "bool" => $"FindOption(_opts, \"{normalizedName}\")?.Boolean ?? false",
                             "double" => $"FindOption(_opts, \"{normalizedName}\")?.Integer is long _doubleVal_{opt.ParameterName} ? (double)_doubleVal_{opt.ParameterName} : 0.0",
@@ -459,7 +469,9 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
             string paramStr = string.Join(", ", paramList);
             string call = $"{bindingCode}var _res = {targetExpr}.{c.MethodName}({paramStr}); if (_res is System.Threading.Tasks.Task t) await t.ConfigureAwait(false);";
 
-            return $"new global::SimpleDiscordNet.Commands.CommandHandler(HasContext: {(c.HasContext ? "true" : "false")}, AutoDefer: {(c.AutoDefer ? "true" : "false")}, Invoke: static async (ctx, ct) => {{ {call} }})";
+            // Only use 'static' keyword if the method is actually static
+            string lambdaModifier = c.IsStatic ? "static " : "";
+            return $"new global::SimpleDiscordNet.Commands.CommandHandler(HasContext: {(c.HasContext ? "true" : "false")}, AutoDefer: {(c.AutoDefer ? "true" : "false")}, Invoke: {lambdaModifier}async (ctx, ct) => {{ {call} }})";
         }
 
         var sb = new StringBuilder();
@@ -474,8 +486,9 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
         // Emit optional singletons for instance types
         foreach (var typeName in commands.Where(c => !c.IsStatic).Select(c => c.ContainingType).Concat(components.Where(c => !c.IsStatic).Select(c => c.ContainingType)).Distinct())
         {
-            var any = candidates.First(c => c.ContainingType == typeName);
-            if (!any.HasDefaultCtor) continue; // will diagnose below
+            // Check if ANY instance method from this type has a default constructor
+            var instanceMethod = candidates.FirstOrDefault(c => c.ContainingType == typeName && !c.IsStatic);
+            if (instanceMethod == null || !instanceMethod.HasDefaultCtor) continue; // will diagnose below
             sb.AppendLine($"    internal static class __InstHolder_{SanitizeId(typeName)} {{ internal static readonly {typeName} Value = new {typeName}(); }}");
         }
 
@@ -483,7 +496,7 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
         sb.AppendLine("    internal sealed class __GeneratedManifest : global::SimpleDiscordNet.Commands.IGeneratedManifest");
         sb.AppendLine("    {");
         sb.AppendLine("        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
-        sb.AppendLine("        private static global::SimpleDiscordNet.Models.InteractionOption? FindOption(global::SimpleDiscordNet.Models.InteractionOption[] options, string name)");
+        sb.AppendLine("        private static global::SimpleDiscordNet.Models.InteractionOption? FindOption(global::System.Collections.Generic.IReadOnlyList<global::SimpleDiscordNet.Models.InteractionOption> options, string name)");
         sb.AppendLine("        {");
         sb.AppendLine("            foreach (var opt in options)");
         sb.AppendLine("            {");
@@ -738,6 +751,7 @@ public sealed class SlashAndComponentGenerator : IIncrementalGenerator
         public string OptionName { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public string TypeName { get; set; } = string.Empty; // "string", "long", "int", "bool", "double", "float", "User", "Channel", "Role"
+        public string ActualTypeName { get; set; } = string.Empty; // Actual C# type: "string", "long", "ulong", "int", "bool", etc.
         public bool IsNullable { get; set; }
         public bool IsRequired { get; set; }
         public string? DefaultValue { get; set; }

@@ -96,4 +96,14 @@ public interface IDiscordContextOperations
     /// Modifies a channel (name, parent category, position, topic, nsfw, etc.).
     /// </summary>
     Task<DiscordChannel?> ModifyChannelAsync(ulong channelId, string? name = null, string? parentId = null, int? position = null, string? topic = null, bool? nsfw = null, int? bitrate = null, int? userLimit = null, int? rateLimitPerUser = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets or updates a channel permission overwrite for a role or member.
+    /// </summary>
+    Task SetChannelPermissionAsync(string channelId, string targetId, int type, ulong allow, ulong deny, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a channel permission overwrite.
+    /// </summary>
+    Task DeleteChannelPermissionAsync(string channelId, string overwriteId, CancellationToken ct = default);
 }

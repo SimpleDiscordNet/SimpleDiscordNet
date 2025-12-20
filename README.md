@@ -112,7 +112,17 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTI
 
 ## Version History
 
-### v1.5.0 - Entity-First Architecture & Rich API (2025-12-20)
+### v1.4.3 - Channel Permissions & Source Generator Fixes (2025-12-20)
+- ✅ **Channel permission management** - Add, remove, deny, and modify permissions for roles and members
+  - `channel.AddPermissionAsync(roleId, PermissionFlags.AttachFiles)`
+  - `role.AddChannelPermissionAsync(channel, permission)`
+  - `member.AddChannelPermissionAsync(channel, permission)`
+- ✅ **Source generator fixes** - `[CommandOption]` attribute now optional for backward compatibility
+- ✅ **Added `ulong` parameter support** - Commands can now use `ulong` parameters (Discord snowflake IDs)
+- ✅ **Fixed mixed static/instance class handling** - Classes with both static and instance methods now generate correctly
+- 🔧 **Type compatibility** - Fixed `IReadOnlyList<InteractionOption>` handling
+
+### v1.4.1 - Entity-First Architecture & Rich API (2025-12-20)
 - ✅ **Removed WithGuild wrappers** - All entities (Channel, Member, Role, User) now have direct Guild/Guilds properties
 - ✅ **Rich entity methods** - Entities can perform operations on themselves (channel.SendMessageAsync, member.AddRoleAsync, message.PinAsync)
 - ✅ **Enhanced channel management** - SetTopicAsync, SetNameAsync, SetNsfwAsync, SetBitrateAsync, SetUserLimitAsync, SetSlowmodeAsync

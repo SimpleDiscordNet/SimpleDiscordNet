@@ -133,6 +133,111 @@ public sealed class DiscordChannel
     /// </summary>
     public Task<DiscordChannel?> SetSlowmodeAsync(int rateLimitPerUser, CancellationToken ct = default)
         => Context.DiscordContext.Operations.ModifyChannelAsync(Id, rateLimitPerUser: rateLimitPerUser, ct: ct);
+
+    /// <summary>
+    /// Modifies channel permissions for a specific role or member.
+    /// This sets explicit allow and deny permissions. Use bitwise OR to combine multiple permissions.
+    /// Example: await channel.ModifyPermissionsAsync(roleId, allow: PermissionFlags.SendMessages | PermissionFlags.ViewChannel);
+    /// </summary>
+    /// <param name="targetId">Role ID or User ID</param>
+    /// <param name="allow">Permissions to explicitly allow (optional)</param>
+    /// <param name="deny">Permissions to explicitly deny (optional)</param>
+    /// <param name="isRole">True for role permissions, false for member permissions (default: true)</param>
+    public async Task ModifyPermissionsAsync(ulong targetId, PermissionFlags? allow = null, PermissionFlags? deny = null, bool isRole = true, CancellationToken ct = default)
+    {
+        // Get current overwrite for this target
+        var current = GetOverwrite(targetId);
+        ulong allowBits = allow.HasValue ? (ulong)allow.Value : (current?.Allow ?? 0);
+        ulong denyBits = deny.HasValue ? (ulong)deny.Value : (current?.Deny ?? 0);
+
+        await Context.DiscordContext.Operations.SetChannelPermissionAsync(
+            Id.ToString(),
+            targetId.ToString(),
+            isRole ? 0 : 1,
+            allowBits,
+            denyBits,
+            ct);
+    }
+
+    /// <summary>
+    /// Adds a single permission for a specific role or member.
+    /// This adds the permission to the allow list without affecting other permissions.
+    /// Example: await channel.AddPermissionAsync(roleId, PermissionFlags.AttachFiles);
+    /// </summary>
+    /// <param name="targetId">Role ID or User ID</param>
+    /// <param name="permission">The permission to add</param>
+    /// <param name="isRole">True for role permissions, false for member permissions (default: true)</param>
+    public async Task AddPermissionAsync(ulong targetId, PermissionFlags permission, bool isRole = true, CancellationToken ct = default)
+    {
+        var current = GetOverwrite(targetId);
+        ulong allowBits = (current?.Allow ?? 0) | (ulong)permission;
+        ulong denyBits = (current?.Deny ?? 0) & ~(ulong)permission; // Remove from deny if present
+
+        await Context.DiscordContext.Operations.SetChannelPermissionAsync(
+            Id.ToString(),
+            targetId.ToString(),
+            isRole ? 0 : 1,
+            allowBits,
+            denyBits,
+            ct);
+    }
+
+    /// <summary>
+    /// Removes a single permission for a specific role or member.
+    /// This removes the permission from both allow and deny lists, returning it to the default/inherited state.
+    /// Example: await channel.RemovePermissionAsync(roleId, PermissionFlags.AttachFiles);
+    /// </summary>
+    /// <param name="targetId">Role ID or User ID</param>
+    /// <param name="permission">The permission to remove</param>
+    /// <param name="isRole">True for role permissions, false for member permissions (default: true)</param>
+    public async Task RemovePermissionAsync(ulong targetId, PermissionFlags permission, bool isRole = true, CancellationToken ct = default)
+    {
+        var current = GetOverwrite(targetId);
+        if (current == null) return; // No overwrite exists, nothing to remove
+
+        ulong allowBits = current.Allow & ~(ulong)permission;
+        ulong denyBits = current.Deny & ~(ulong)permission;
+
+        await Context.DiscordContext.Operations.SetChannelPermissionAsync(
+            Id.ToString(),
+            targetId.ToString(),
+            isRole ? 0 : 1,
+            allowBits,
+            denyBits,
+            ct);
+    }
+
+    /// <summary>
+    /// Denies a single permission for a specific role or member.
+    /// This explicitly denies the permission, overriding any role-based allows.
+    /// Example: await channel.DenyPermissionAsync(roleId, PermissionFlags.SendMessages);
+    /// </summary>
+    /// <param name="targetId">Role ID or User ID</param>
+    /// <param name="permission">The permission to deny</param>
+    /// <param name="isRole">True for role permissions, false for member permissions (default: true)</param>
+    public async Task DenyPermissionAsync(ulong targetId, PermissionFlags permission, bool isRole = true, CancellationToken ct = default)
+    {
+        var current = GetOverwrite(targetId);
+        ulong allowBits = (current?.Allow ?? 0) & ~(ulong)permission; // Remove from allow if present
+        ulong denyBits = (current?.Deny ?? 0) | (ulong)permission;
+
+        await Context.DiscordContext.Operations.SetChannelPermissionAsync(
+            Id.ToString(),
+            targetId.ToString(),
+            isRole ? 0 : 1,
+            allowBits,
+            denyBits,
+            ct);
+    }
+
+    /// <summary>
+    /// Deletes all permission overwrites for a specific role or member.
+    /// This resets the target to use default/inherited permissions.
+    /// Example: await channel.DeletePermissionOverwriteAsync(roleId);
+    /// </summary>
+    /// <param name="targetId">Role ID or User ID</param>
+    public Task DeletePermissionOverwriteAsync(ulong targetId, CancellationToken ct = default)
+        => Context.DiscordContext.Operations.DeleteChannelPermissionAsync(Id.ToString(), targetId.ToString(), ct);
 }
 
 public sealed record ChannelPermissionOverwrite

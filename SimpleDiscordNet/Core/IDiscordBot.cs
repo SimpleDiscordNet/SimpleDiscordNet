@@ -173,4 +173,14 @@ public interface IDiscordBot : IAsyncDisposable, IDisposable
     /// Deletes a channel.
     /// </summary>
     Task DeleteChannelAsync(string channelId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets or updates a channel permission overwrite for a role or member.
+    /// </summary>
+    Task SetChannelPermissionAsync(string channelId, string targetId, int type, ulong allow, ulong deny, CancellationToken ct = default);
+
+    /// <summary>
+    /// Deletes a channel permission overwrite.
+    /// </summary>
+    Task DeleteChannelPermissionAsync(string channelId, string overwriteId, CancellationToken ct = default);
 }

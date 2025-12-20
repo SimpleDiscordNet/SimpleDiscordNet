@@ -107,4 +107,39 @@ public sealed class DiscordMember
     /// Example: if (member.IsCurrentBot) return; // Ignore self
     /// </summary>
     public bool IsCurrentBot => User.IsCurrentBot;
+
+    /// <summary>
+    /// Adds a channel permission for this member.
+    /// Example: await member.AddChannelPermissionAsync(channel, PermissionFlags.AttachFiles);
+    /// </summary>
+    public Task AddChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission, CancellationToken ct = default)
+        => channel.AddPermissionAsync(User.Id, permission, isRole: false, ct);
+
+    /// <summary>
+    /// Removes a channel permission for this member.
+    /// Example: await member.RemoveChannelPermissionAsync(channel, PermissionFlags.AttachFiles);
+    /// </summary>
+    public Task RemoveChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission, CancellationToken ct = default)
+        => channel.RemovePermissionAsync(User.Id, permission, isRole: false, ct);
+
+    /// <summary>
+    /// Denies a channel permission for this member.
+    /// Example: await member.DenyChannelPermissionAsync(channel, PermissionFlags.SendMessages);
+    /// </summary>
+    public Task DenyChannelPermissionAsync(DiscordChannel channel, PermissionFlags permission, CancellationToken ct = default)
+        => channel.DenyPermissionAsync(User.Id, permission, isRole: false, ct);
+
+    /// <summary>
+    /// Modifies channel permissions for this member.
+    /// Example: await member.ModifyChannelPermissionsAsync(channel, allow: PermissionFlags.SendMessages | PermissionFlags.ViewChannel);
+    /// </summary>
+    public Task ModifyChannelPermissionsAsync(DiscordChannel channel, PermissionFlags? allow = null, PermissionFlags? deny = null, CancellationToken ct = default)
+        => channel.ModifyPermissionsAsync(User.Id, allow, deny, isRole: false, ct);
+
+    /// <summary>
+    /// Deletes all channel permission overwrites for this member.
+    /// Example: await member.DeleteChannelPermissionOverwriteAsync(channel);
+    /// </summary>
+    public Task DeleteChannelPermissionOverwriteAsync(DiscordChannel channel, CancellationToken ct = default)
+        => channel.DeletePermissionOverwriteAsync(User.Id, ct);
 }

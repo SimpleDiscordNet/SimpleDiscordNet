@@ -99,4 +99,10 @@ internal sealed class DiscordContextOperations : IDiscordContextOperations
 
     public Task<DiscordChannel?> ModifyChannelAsync(ulong channelId, string? name = null, string? parentId = null, int? position = null, string? topic = null, bool? nsfw = null, int? bitrate = null, int? userLimit = null, int? rateLimitPerUser = null, CancellationToken ct = default)
         => _bot.ModifyChannelAsync(channelId.ToString(), name, null, parentId, position, topic, nsfw, bitrate, userLimit, rateLimitPerUser, ct);
+
+    public Task SetChannelPermissionAsync(string channelId, string targetId, int type, ulong allow, ulong deny, CancellationToken ct = default)
+        => _bot.SetChannelPermissionAsync(channelId, targetId, type, allow, deny, ct);
+
+    public Task DeleteChannelPermissionAsync(string channelId, string overwriteId, CancellationToken ct = default)
+        => _bot.DeleteChannelPermissionAsync(channelId, overwriteId, ct);
 }
